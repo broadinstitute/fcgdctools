@@ -87,3 +87,10 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Ignore all emacs backup files
+*~
+
+# Ignore some files in test directory
+fcgdctools/test/*.txt
+fcgdctools/test/*.db
