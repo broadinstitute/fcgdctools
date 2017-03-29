@@ -21,5 +21,10 @@ setup(
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
         "Development Status :: 2 - Pre-Alpha"
-        ]
+        ],
+    entry_points={
+        'console_scripts': [
+            'gentsvs=fcgdctools.fc_loadfiles:main',
+        ],
+    }
 )    

@@ -9,7 +9,7 @@ import pprint
 import os.path
 import sys
 
-import gdc_uuidresolver 
+from fcgdctools import gdc_uuidresolver 
 
 #access category
 class GDC_FileAccessType:
