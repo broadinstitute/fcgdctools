@@ -542,7 +542,7 @@ def create_participants_file(cases, manifestFileBasename):
                     entity_row[attribute_name] = case[attribute_name]
                     if attribute_name.endswith(UUID_ATTRIBUTE_SUFFIX):
                         basename = attribute_name[0:-len(UUID_ATTRIBUTE_SUFFIX)]
-                        membership_row = {'membership:participant_set_id' : GDC_FILE_ACCESS.getAccessTypePrefix(basename) + "GDC_FILE_RETRIEVAL_" + attribute_name,
+                        membership_row = {'membership:participant_set_id' : GDC_FILE_ACCESS.getAccessTypePrefix(basename) + basename,
                                           'participant_id' : case_id}
                         membership_writer.writerow(membership_row)
                 else:
@@ -582,7 +582,7 @@ def create_samples_file(samples, manifestFileBasename):
                     entity_row[attribute_name] = sample[attribute_name]
                     if attribute_name.endswith(UUID_ATTRIBUTE_SUFFIX):
                         basename = attribute_name[0:-len(UUID_ATTRIBUTE_SUFFIX)]
-                        membership_row = {'membership:sample_set_id' : GDC_FILE_ACCESS.getAccessTypePrefix(basename) + "GDC_FILE_RETRIEVAL_" + attribute_name,
+                        membership_row = {'membership:sample_set_id' : GDC_FILE_ACCESS.getAccessTypePrefix(basename) + basename,
                                           'sample_id' : sample_id}
                         membership_writer.writerow(membership_row)
                 else:
@@ -630,7 +630,7 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
                     entity_row[attribute_name] = pair[attribute_name]
                     if attribute_name.endswith(UUID_ATTRIBUTE_SUFFIX):
                         basename = attribute_name[0:-len(UUID_ATTRIBUTE_SUFFIX)]
-                        membership_row = {'membership:pair_set_id' : GDC_FILE_ACCESS.getAccessTypePrefix(basename) + "GDC_FILE_RETRIEVAL_" + attribute_name,
+                        membership_row = {'membership:pair_set_id' : GDC_FILE_ACCESS.getAccessTypePrefix(basename) + basename,
                                           'pair_id': pair_id}
                         membership_writer.writerow(membership_row)
                 else:
@@ -645,7 +645,7 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
 def main():
 
     parser = argparse.ArgumentParser(description='create FireCloud workspace load files from GDC manifest')
-    parser.add_argument("manifest", help="manifest file downloaded from the GDC Data Portal")
+    parser.add_argument("manifest", help="manifest file from the GDC Data Portal")
     parser.add_argument("-r", "--resolve_uuids", help="resolve uuids in the manifest to urls")
     parser.add_argument("-l", "--legacy", help="point to GDC Legacy Archive", action="store_true")
     args = parser.parse_args()
