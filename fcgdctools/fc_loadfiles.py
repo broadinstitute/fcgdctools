@@ -1,6 +1,8 @@
 # Version: 6
 # Date: March 26, 2017
 # Comments: combine uuid and filename into single attributeincorporated uuid-to-url resolution
+# ToDo: should probably use gdctools for querying of GDC.
+#       have multiple side images per case - we are not accounting for that
 
 import csv
 import requests
@@ -10,6 +12,9 @@ import os.path
 import sys
 
 from fcgdctools import gdc_uuidresolver 
+
+GDC_API_ROOT = "https://gdc-api.nci.nih.gov"
+GDC_LEGACY_API_ROOT = "https://gdc-api.nci.nih.gov/legacy"
 
 #access category
 class GDC_FileAccessType:
@@ -25,11 +30,20 @@ class GDC_DataCategory:
     COPY_NUMBER_VARIATION = "Copy Number Variation"
     TRANSCRIPTOME_PROFILING = "Transcriptome Profiling"
     SNV = "Simple Nucleotide Variation"
+
+    #legacy data categories
+    RAW_MICROARRAY_DATA = "Raw microarray data"
     
 #data types
 class GDC_DataType:
-    #associated with Clinical data category
+    #data types associated with Clinical data category
     CLINICAL_SUPPLEMENT = "Clinical Supplement"
+    #legacy data types associated with Clinical data category
+    TISSUE_SLIDE_IMAGE = "Tissue slide image"
+    DIAGNOSTIC_IMAGE = "Diagnostic image"
+    PATHOLOGY_REPORT = "Pathology report"
+    CLINICAL_DATA = "Clinical data"
+    BIOSPECIMEN_DATA = "Biospecimen data"
 
     #associated with Biospecimen data category
     BIOSPECIMEN_SUPPLEMENT = "Biospecimen Supplement"
@@ -55,57 +69,66 @@ class GDC_DataType:
     AGGREGATED_SOMATIC_MUTATION = "Aggregated Somatic Mutation"
     MASKED_SOMATIC_MUTATION = "Masked Somatic Mutation"
 
-class FC_DataModelAttributes:
 
-    def __init__(self):
+class DataSource:
+    ABBREV_TRANSLATE_TABLE = ''.maketrans({'.' : '', '-' : '', ' ' : '', '_' :''})    
+    def __init__(self, abbreviations):
+        self.abbreviations = abbreviations
+
+    def getAbbreviation(self, type):
+        if type in self.abbreviations:
+            return self.abbreviations[type]
+        else:
+            return type.translate(DataSource.ABBREV_TRANSLATE_TABLE)
         
-        self.attributeNames = {
-            GDC_DataCategory.CLINICAL : {GDC_DataType.CLINICAL_SUPPLEMENT : 'clinical_supplement'},
-            GDC_DataCategory.BIOSPECIMEN : {GDC_DataType.BIOSPECIMEN_SUPPLEMENT : 'biospecimen_supplement'},
-            GDC_DataCategory.DNA_METHYLATION : {GDC_DataType.METHYLATION_BETA_VALUE : 'methylation_beta_value'},
-            GDC_DataCategory.COPY_NUMBER_VARIATION : {GDC_DataType.COPY_NUMBER_SEGMENT : 'copy_number_segment',
-                                                     GDC_DataType.MASKED_COPY_NUMBER_SEGMENT : 'masked_copy_number_segment'},
-            GDC_DataCategory.RAW_SEQUENCING_DATA : {GDC_DataType.ALIGNED_READS : 'aligned_reads'},
-            GDC_DataCategory.TRANSCRIPTOME_PROFILING : {GDC_DataType.MIRNA_EXPRESSION_QUANTIFICATION : 'mirna_expression_quantification',
-                                                       GDC_DataType.ISOFORM_EXPRESSION_QUANTIFICATION : 'isoform_expression_quantification',
-                                                       GDC_DataType.GENE_EXPRESSION_QUANTIFICATION : 'gene_expression_quantification'},
-            GDC_DataCategory.SNV : {GDC_DataType.RAW_SIMPLE_SOMATIC_MUTATION : 'raw_simple_somatic_mutation',
-                                   GDC_DataType.ANNOTATED_SOMATIC_MUTATION : 'annotated_somatic_mutation',
-                                   GDC_DataType.AGGREGATED_SOMATIC_MUTATION : 'aggregated_somatic_mutation',
-                                   GDC_DataType.MASKED_SOMATIC_MUTATION : 'masked_somatic_mutation'}
-            }
+EXP_STRATEGY_ABBREVIATIONS = {
+        'WXS' : 'WXS',
+        'RNA-Seq' : 'RNAseq',
+        'miRNA-Seq' : 'miRNAseq',
+        'Genotyping Array' : 'GeneArray',
+        'Methylation Array' : 'MethArray'}
 
-    def __category_and_type_recognized(self, data_category, data_type):
-        return data_category in self.attributeNames and data_type in self.attributeNames[data_category]
-
-
-    def constructAttributeName_base(self, experimental_strategy, workflow_type, data_category, data_type):
-
-        assert self.__category_and_type_recognized(data_category, data_type), "category={0}, type={1}".format(data_category, data_type)
-
-        if experimental_strategy is not None:
-            if experimental_strategy in EXP_STRATEGY.abbreviations:            
-                experimental_strategy_abbrev = EXP_STRATEGY.getAbbreviation(experimental_strategy) + '__'
-            else:
-                experimental_strategy_abbrev = experimental_strategy.translate(EXP_STRATEGY.ABBREV_TRANSLATE_TABLE) + '__'
-        else:
-            experimental_strategy_abbrev = ''
+EXP_STRATEGY = DataSource(EXP_STRATEGY_ABBREVIATIONS)
     
-        if workflow_type is not None:
-            if workflow_type in WORKFLOW.abbreviations:
-                workflow_type_abbrev = WORKFLOW.getAbbreviation(workflow_type) + '__'
-            else:
-                workflow_type_abbrev = workflow_type.translate(WORKFLOW.ABBREV_TRANSLATE_TABLE) + '__'
-        else:
-            workflow_type_abbrev = ''
+WORKFLOW_ABBREVIATIONS = {
+        'SomaticSniper': 'SomSnip',
+        'MuTect2' : 'MuTect2',
+        'VarScan2' : 'VarScan2',
+        'MuSE' : 'MuSE',
+        'SomaticSniper Annotation' : 'SomSnipAnnot',
+        'MuTect2 Annotation' : 'MuTect2Annot',
+        'VarScan2 Annotation' : 'VarScan2Annot',
+        'MuSE Annotation' : 'MuSEAnnot',
+        'MuSE Variant Aggregation and Masking' : 'MuSEAggrMask',
+        'MuTect2 Variant Aggregation and Masking' : 'MuSEAggrMask',
+        'SomaticSniper Variant Aggregation and Masking' : 'SomSnipAggrMask',
+        'VarScan2 Variant Aggregation and Masking' : 'VarScan2AggrMask',
+        'BCGSC miRNA Profiling' : 'BCGSCmiRNA',
+        'HTSeq - Counts' : 'HTSeqCounts',
+        'HTSeq - FPKM' : 'HTSeqFPKM',
+        'HTSeq - FPKM-UQ' : 'HTSEQFPKMUQ',
+        'DNACopy' : 'DNACopy',
+        'BWA with Mark Duplicates and Cocleaning' : 'BWAMDupCoClean',
+        'STAR 2-Pass' : 'STAR2Pass',
+        'BWA-aln' : 'BWAaln',
+        'Liftover' : 'Lift'}
 
-        attribute_name_base = experimental_strategy_abbrev + workflow_type_abbrev + self.attributeNames[data_category][data_type]
+WORKFLOW = DataSource(WORKFLOW_ABBREVIATIONS)
+        
+class Platform(DataSource):
 
-        return (attribute_name_base)
+    def __init__(self, abbreviations):
+        DataSource.__init__(self, abbreviations)
+        
 
+PLATFORM_ABBREVIATIONS = {
+        'Affymetrix SNP 6.0' : 'AffySNP6',
+        'Illumina' : 'Illum',
+        'Illumina Human Methylation 450' : 'IllumHuMeth450',
+        'Illumina Human Methylation 27' : 'IllumHuMeth27'}
+
+PLATFORM = Platform(PLATFORM_ABBREVIATIONS)    
     
-GDC_TO_FC = FC_DataModelAttributes()
-
 class GDC_FileAccess:
 
     def __init__(self):
@@ -176,60 +199,7 @@ class SampleType:
 
 SAMPLE_TYPE = SampleType()
 
-class DataSource:
     
-    def __init__(self, abbreviations):
-        self.abbreviations = abbreviations
-
-    def getAbbreviation(self, type):
-        return self.abbreviations[type]
-        
-class ExperimentalStrategy(DataSource):
-
-    def __init__(self, abbreviations):
-        DataSource.__init__(self, abbreviations)
-
-EXP_STRATEGY_ABBREVIATIONS = {
-        'WXS' : 'WXS',
-        'RNA-Seq' : 'RNAseq',
-        'miRNA-Seq' : 'miRNAseq',
-        'Genotyping Array' : 'GeneArray',
-        'Methylation Array' : 'MethArray'}
-
-EXP_STRATEGY = ExperimentalStrategy(EXP_STRATEGY_ABBREVIATIONS)
-    
-class Workflow(DataSource):
-
-    ABBREV_TRANSLATE_TABLE = ''.maketrans({'.' : '', '-' : '', ' ' : '', '_' :''})
-
-    def __init__(self, abbreviations):
-        DataSource.__init__(self, abbreviations)
-
-WORKFLOW_ABBREVIATIONS = {
-        'SomaticSniper': 'SomSnip',
-        'MuTect2' : 'MuTect2',
-        'VarScan2' : 'VarScan2',
-        'MuSE' : 'MuSE',
-        'SomaticSniper Annotation' : 'SomSnipAnnot',
-        'MuTect2 Annotation' : 'MuTect2Annot',
-        'VarScan2 Annotation' : 'VarScan2Annot',
-        'MuSE Annotation' : 'MuSEAnnot',
-        'MuSE Variant Aggregation and Masking' : 'MuSEAggrMask',
-        'MuTect2 Variant Aggregation and Masking' : 'MuSEAggrMask',
-        'SomaticSniper Variant Aggregation and Masking' : 'SomSnipAggrMask',
-        'VarScan2 Variant Aggregation and Masking' : 'VarScan2AggrMask',
-        'BCGSC miRNA Profiling' : 'BCGSCmiRNA',
-        'HTSeq - Counts' : 'HTSeqCounts',
-        'HTSeq - FPKM' : 'HTSeqFPKM',
-        'HTSeq - FPKM-UQ' : 'HTSEQFPKMUQ',
-        'DNACopy' : 'DNACopy',
-        'BWA with Mark Duplicates and Cocleaning' : 'BWAMDupCoClean',
-        'STAR 2-Pass' : 'STAR2Pass',
-        'BWA-aln' : 'BWAaln',
-        'Liftover' : 'Lift'}
-
-WORKFLOW = Workflow(WORKFLOW_ABBREVIATIONS)
-        
 class Platform(DataSource):
 
     def __init__(self, abbreviations):
@@ -244,7 +214,37 @@ PLATFORM_ABBREVIATIONS = {
 
 PLATFORM = Platform(PLATFORM_ABBREVIATIONS)
 
-GDC_API_ROOT = "https://gdc-api.nci.nih.gov"
+class MetadataRetriever():
+    def __init__(self, gdc_api_root, fields):
+        self.gdc_api_root = gdc_api_root
+        self.fields = fields
+
+    def get_metadata(self, file_uuid):
+        url = "{0}/files/{1}?fields={2}".format(self.gdc_api_root, file_uuid, self.fields)
+        response = requests.get(url, headers=None)
+        responseDict = response.json()
+
+        return responseDict['data']
+
+class CaseMetadataRetriever(MetadataRetriever):
+    def __init__(self, gdc_api_root):
+        fields = "cases.case_id,cases.submitter_id"
+        MetadataRetriever.__init__(self, gdc_api_root, fields)
+    
+class CaseSampleMetadataRetriever(MetadataRetriever):
+    def __init__(self, gdc_api_root):
+        fields = "cases.case_id,cases.submitter_id"
+        fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id"
+        MetadataRetriever.__init__(self, gdc_api_root, fields)
+
+class FileMetadataRetriever(MetadataRetriever):
+    def __init__(self, gdc_api_root):
+        if gdc_api_root == GDC_API_ROOT:
+            fields = "data_category,data_type,access, data_format,experimental_strategy,analysis.workflow_type"
+        else:
+            fields = "data_category,data_type,access,experimental_strategy"
+        MetadataRetriever.__init__(self, gdc_api_root, fields)
+
 SEPARATOR = '/'
 UUID_ATTRIBUTE_SUFFIX = "__uuid_and_filename"
 URL_ATTRIBUTE_SUFFIX = "__url"
@@ -261,641 +261,259 @@ def _read_manifestFile(manifestFile):
     
     return manifestFileList
 
+def _add_to_knowncases(case_metadata, known_cases):
+    case_id = case_metadata['case_id']
+    if case_id not in known_cases:
+        submitter_id = case_metadata['submitter_id']
+        new_case = {'submitter_id' : submitter_id}
+        known_cases[case_id] = new_case
+    return case_id
 
-def _get_case_level_metadata(file_uuid):
-    #get case_id and (case) submitter_id
-    fields = "cases.case_id,cases.submitter_id"
-    url = "{0}/files/{1}?fields={2}".format(GDC_API_ROOT, file_uuid, fields)
-    #print("get_case_level_metadata:", url)
+def _add_to_knownsamples(sample_metadata, case_id, known_samples):
+    sample_id = sample_metadata['sample_id']
+    sample_type_id = sample_metadata['sample_type_id']
+    if sample_id not in known_samples:
+        sample_submitter_id = sample_metadata['submitter_id']
+        new_sample = {'submitter_id' : sample_submitter_id, 
+                      'sample_type_id' : sample_type_id,
+                      'case_id' : case_id}
+        known_samples[sample_id] = new_sample
+    return sample_id, SAMPLE_TYPE.getTumorNormalClassification(sample_type_id)
 
-    response = requests.get(url, headers=None)
-    #print(response)
-    responseDict = response.json()
-    #print("responseDict:")
-    #pp = pprint.PrettyPrinter()
-    #pp.pprint(responseDict)
+def _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs):
+    pair_id = "{0}_{1}".format(tumor_sample_id, normal_sample_id)
+    if pair_id not in known_pairs:
+        known_pairs[pair_id] = {'tumor': tumor_sample_id, 'normal': normal_sample_id}
+    return pair_id
 
-    return responseDict['data']
-    
-def _get_case_and_sample_level_metadata(file_uuid):
-    
-    fields = "cases.case_id,cases.submitter_id"
-    fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id"
-    url = "{0}/files/{1}?fields={2}".format(GDC_API_ROOT, file_uuid, fields)
-    #print("get_case_and sample_level_metadata:", url)
+def _constructAttributeName_base(experimental_strategy, workflow_type, data_category, data_type):
 
-    response = requests.get(url, headers=None)
-    responseDict = response.json()
+    if experimental_strategy is not None:
+        experimental_strategy_abbrev = EXP_STRATEGY.getAbbreviation(experimental_strategy) + '__'
+    else:
+        experimental_strategy_abbrev = ''
 
-    #pp = pprint.PrettyPrinter()
-    #print("responseDict:")
-    #pp.pprint(responseDict)
-    return responseDict['data']
+    if workflow_type is not None:
+        workflow_type_abbrev = WORKFLOW.getAbbreviation(workflow_type) + '__'
+    else:
+        workflow_type_abbrev = ''
 
+    data_type_lc = data_type.lower().replace(" ", "_")
 
-def _get_clinical_biospecimen_supplement_metadata(file_uuid):
-    
-    file_metadata = _get_case_level_metadata(file_uuid)
-    return file_metadata
+    attribute_name_base = experimental_strategy_abbrev + workflow_type_abbrev + data_type_lc
 
-def _get_methylation_beta_value_metadata(file_uuid):
-    
-    file_metadata = _get_case_and_sample_level_metadata(file_uuid)
-    return file_metadata
+    return (attribute_name_base)
 
-def _get_copy_number_segment_metadata(file_uuid):
-    
-    file_metadata = _get_case_and_sample_level_metadata(file_uuid)
-    return file_metadata
+def _getImageCodeAndPortionFromImageFilename(filename):
+    image_code = filename.split('.')[0].split('-')[-1]
+    portion = int(filename.split('.')[0].split('-')[-2])
+    return image_code, portion
 
-def _get_aligned_reads_metadata(file_uuid):
-    
-    file_metadata = _get_case_and_sample_level_metadata(file_uuid)
-    return file_metadata
+def _constructImageAttributeName_base(experimental_strategy, workflow_type, data_category, data_type, filename=None):
 
-def _get_expression_quantification_metadata(file_uuid):
-    
-    file_metadata = _get_case_and_sample_level_metadata(file_uuid)
-    return file_metadata
+    if experimental_strategy is not None:
+        experimental_strategy_abbrev = EXP_STRATEGY.getAbbreviation(experimental_strategy) + '__'
+    else:
+        experimental_strategy_abbrev = ''
 
-def _get_paired_SNV_metadata(file_uuid):
-    
-    file_metadata = _get_case_and_sample_level_metadata(file_uuid)
-    return file_metadata
+    if workflow_type is not None:
+        workflow_type_abbrev = WORKFLOW.getAbbreviation(workflow_type) + '__'
+    else:
+        workflow_type_abbrev = ''
 
-def _get_aggregated_SNV_metadata(file_uuid):
-    file_metadata = _get_case_and_sample_level_metadata(file_uuid)
-    return file_metadata
+    data_type_lc = data_type.lower().replace(" ", "_") + '_'
 
+    # see https://wiki.nci.nih.gov/display/TCGA/TCGA+barcode# for interpretation of TCGA bar code
+    # that is incorporated into image filename
+    image_code, portion = _getImageCodeAndPortionFromImageFilename(filename)
+    if 'BS' in image_code:
+        image_abbrev = 'bottom'
+    elif 'TS' in image_code:
+        image_abbrev = 'top'
+    elif 'MS' in image_code:
+        image_abbrev = 'middle'
+    else:
+        image_abbrev=image_name[0:2]
 
-def get_file_metadata(file_uuid, filename, file_url, known_cases, known_samples, known_pairs, deferred_file_uuids):
+    image_abbrev = image_abbrev
+
+    attribute_name_base = experimental_strategy_abbrev + workflow_type_abbrev + data_type_lc + image_abbrev
+
+    return attribute_name_base, portion
+
+def _add_file_attribute(entity, file_uuid, filename, file_url,
+                        data_category, data_type, experimental_strategy, workflow_type, access):
+
+    # I needed to insert some special-case processing for image data files
+    # this probably isn't the cleanest way to handle it, but good enough for now
+    if data_type in set([GDC_DataType.TISSUE_SLIDE_IMAGE, GDC_DataType.DIAGNOSTIC_IMAGE]):
+        basename, portion = _constructImageAttributeName_base(experimental_strategy, workflow_type,
+                                                              data_category, data_type, filename)
+        attribute_name = basename + UUID_ATTRIBUTE_SUFFIX
+
+        if attribute_name in entity:
+            print("multiple portions!")
+            filename_present = entity[attribute_name]
+            _, portion_present = _getImageCodeAndPortionFromImageFilename(filename_present)
+            if portion > portion_present:
+                GDC_FILE_ACCESS.recordFileAccessType(basename, access)
+                entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
+                entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url
+        else:
+            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
+            entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
+            entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url            
+    else:
+        basename = _constructAttributeName_base(experimental_strategy, workflow_type,
+                                                data_category, data_type)
+
+        GDC_FILE_ACCESS.recordFileAccessType(basename, access)
+
+        entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
+        entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url
+
+def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, known_samples, known_pairs, deferred_file_uuids):
     
     # get from GDC the data file's category, type, access type, format, experimental strategy,
     # analysis workflow type
-    fields = "data_category,data_type,access, data_format,experimental_strategy,analysis.workflow_type"
-    url = "{0}/files/{1}?fields={2}".format(GDC_API_ROOT, file_uuid, fields)
-    response = requests.get(url, headers=None)
-    responseDict = response.json()
-    #pp.pprint(responseDict)
+    fileMetadataRetriever = FileMetadataRetriever(gdc_api_root)
+    responseDict = fileMetadataRetriever.get_metadata(file_uuid)
     
-    data_category = responseDict['data']['data_category']
-    data_type = responseDict['data']['data_type']
-    access = responseDict['data']['access']
-
-    if 'data_format' in responseDict['data']:
-        data_format = responseDict['data']['data_format']
+    try:
+        data_category = responseDict['data_category']
+        data_type = responseDict['data_type']
+        access = responseDict['access']
+    except KeyError as x:
+        # we expect all files to have at least a data_category, data_type and access thype assigned them"
+        print("KeyError = ", x)
+        print("SKIPPING FILE: file uuid = {0}, file name = {1}".format(file_uuid, filename))
+        return
+    
+    if 'data_format' in responseDict:
+        data_format = responseDict['data_format']
     else:
         data_format = None
-    if 'experimental_strategy' in responseDict['data']:
-        experimental_strategy = responseDict['data']['experimental_strategy']
+    if 'experimental_strategy' in responseDict:
+        experimental_strategy = responseDict['experimental_strategy']
     else: 
         experimental_strategy = None
-    if 'analysis' in responseDict['data'] and 'workflow_type' in responseDict['data']['analysis']:
-        workflow_type = responseDict['data']['analysis']['workflow_type']
+    if 'analysis' in responseDict and 'workflow_type' in responseDict['analysis']:
+        workflow_type = responseDict['analysis']['workflow_type']
     else:
         workflow_type = None
 
-    # further analysis based on data category and data type
-
-    if data_category == GDC_DataCategory.CLINICAL:
-        if data_type == GDC_DataType.CLINICAL_SUPPLEMENT:
-            metadata = _get_clinical_biospecimen_supplement_metadata(file_uuid)
-            cases = metadata['cases']
-            assert len(cases) > 0, file_uuid
-
-            if len(cases) == 1:
-                case_id = cases[0]['case_id']
-                submitter_id = cases[0]['submitter_id']
-                if case_id not in known_cases:
-                    new_case = {'submitter_id' : submitter_id}
-                    known_cases[case_id] = new_case
-                
-                basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                                 workflow_type,
-                                                                 data_category,
-                                                                 data_type)
-                GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-                known_cases[case_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-                known_cases[case_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-            elif len(cases) > 1:
-                # we have a clinical supplement file that is attached to multiple cases.
-                # we will just record the file_uuid and deal with it after having processed all of the
-                # files in the manifest
-                deferred_file_uuids.append(file_uuid)
-        else:
-            raise ValueError(file_uuid, filename, data_category, data_type)
-    
-    elif data_category == GDC_DataCategory.BIOSPECIMEN:
-        if data_type == GDC_DataType.BIOSPECIMEN_SUPPLEMENT:
-            metadata = _get_clinical_biospecimen_supplement_metadata(file_uuid)
-            cases = metadata['cases']
-            assert len(cases) > 0, file_uuid
-            if len(cases) == 1:
-                case_id = cases[0]['case_id']
-                submitter_id = cases[0]['submitter_id']
-                if case_id not in known_cases:
-                    new_case = {'submitter_id' : submitter_id}
-                    known_cases[case_id] = new_case
-                basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                                 workflow_type,
-                                                                 data_category,
-                                                                 data_type)
-                GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-                known_cases[case_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-                known_cases[case_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-            elif len(cases) > 1:
-                # we have a biospecimen supplement file that is attached to multiple cases.
-                # we will just record the file_uuid and deal with it after having processed all of the
-                # files in the manifest
-                deferred_file_uuids.append(file_uuid)
-        else:
-            raise ValueError(file_uuid, filename, data_category, data_type)
-
-    # no methylation data for TARGET Program        
-    elif data_category == GDC_DataCategory.DNA_METHYLATION:
-
-        if data_type == GDC_DataType.METHYLATION_BETA_VALUE:
-            metadata = _get_methylation_beta_value_metadata(file_uuid)        
-            
-            cases = metadata['cases']
-            assert len(cases) == 1, file_uuid
-            case_id = cases[0]['case_id']
-            case_submitter_id = cases[0]['submitter_id']
-            samples = metadata['cases'][0]['samples']
-            assert len(samples) == 1, file_uuid
-            sample_id = samples[0]['sample_id']
-            sample_submitter_id = samples[0]['submitter_id']
-            sample_type_id = samples[0]['sample_type_id']
-
-            if case_id not in known_cases:
-                new_case ={'submitter_id' : case_submitter_id}
-                known_cases[case_id] = new_case   
-            if sample_id not in known_samples:
-                new_sample = {'submitter_id' : sample_submitter_id, 
-                              'sample_type_id' : sample_type_id,
-                              'case_id' : case_id}
-                known_samples[sample_id] = new_sample
-
-            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                             workflow_type,
-                                                             data_category,
-                                                             data_type)
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-            known_samples[sample_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            known_samples[sample_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        else:
-            raise ValueError(file_uuid, filename, data_category, data_type)
-    
-    elif data_category == GDC_DataCategory.COPY_NUMBER_VARIATION:
-
-        if data_type == GDC_DataType.COPY_NUMBER_SEGMENT:
-            metadata = _get_copy_number_segment_metadata(file_uuid)
-            #pp.pprint(metadata)
-            
-            cases = metadata['cases']
-            assert len(cases) == 1, file_uuid
-            case_id = cases[0]['case_id']
-            case_submitter_id = cases[0]['submitter_id']
-            samples = metadata['cases'][0]['samples']
-            assert len(samples) == 1, file_uuid
-            sample_id = samples[0]['sample_id']
-            sample_submitter_id = samples[0]['submitter_id']
-            sample_type_id = samples[0]['sample_type_id']            
-            
-            if case_id not in known_cases:
-                new_case ={'submitter_id' : case_submitter_id}
-                known_cases[case_id] = new_case   
-            if sample_id not in known_samples:
-                new_sample = {'submitter_id' : sample_submitter_id, 
-                              'sample_type_id' : sample_type_id,
-                              'case_id' : case_id}
-                known_samples[sample_id] = new_sample
-
-            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                             workflow_type,
-                                                             data_category,
-                                                             data_type)
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-
-            known_samples[sample_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            known_samples[sample_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        elif data_type == GDC_DataType.MASKED_COPY_NUMBER_SEGMENT:
-            metadata = _get_copy_number_segment_metadata(file_uuid)
-            #pp.pprint(metadata)
-            
-            cases = metadata['cases']
-            assert len(cases) == 1, file_uuid
-            case_id = cases[0]['case_id']
-            case_submitter_id = cases[0]['submitter_id']
-            samples = metadata['cases'][0]['samples']
-            assert len(samples) == 1, file_uuid
-            sample_id = samples[0]['sample_id']
-            sample_submitter_id = samples[0]['submitter_id']
-            sample_type_id = samples[0]['sample_type_id']            
-            
-            if case_id not in known_cases:
-                new_case ={'submitter_id' : case_submitter_id}
-                known_cases[case_id] = new_case   
-            if sample_id not in known_samples:
-                new_sample = {'submitter_id' : sample_submitter_id, 
-                              'sample_type_id' : sample_type_id,
-                              'case_id' : case_id}
-                known_samples[sample_id] = new_sample
-
-            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                             workflow_type,
-                                                             data_category,
-                                                             data_type)
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-
-            known_samples[sample_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            known_samples[sample_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        else:
-            raise ValueError(file_uuid, filename, data_category, data_type)
-    
-    elif data_category == GDC_DataCategory.RAW_SEQUENCING_DATA:
-
-        if data_type == GDC_DataType.ALIGNED_READS:
-            metadata = _get_aligned_reads_metadata(file_uuid)
-            
-            cases = metadata['cases']
-            assert len(cases) == 1, file_uuid
-            case_id = cases[0]['case_id']
-            case_submitter_id = cases[0]['submitter_id']
-            samples = metadata['cases'][0]['samples']
-            assert len(samples) == 1, file_uuid
-            sample_id = samples[0]['sample_id']
-            sample_submitter_id = samples[0]['submitter_id']
-            sample_type_id = samples[0]['sample_type_id']            
-            
-            if case_id not in known_cases:
-                new_case ={'submitter_id' : case_submitter_id}
-                known_cases[case_id] = new_case   
-            if sample_id not in known_samples:
-                new_sample = {'submitter_id' : sample_submitter_id, 
-                              'sample_type_id' : sample_type_id,
-                              'case_id' : case_id}
-                known_samples[sample_id] = new_sample            
-            
-            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                             workflow_type,
-                                                             data_category,
-                                                             data_type)
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-            
-            known_samples[sample_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            known_samples[sample_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        else:
-            raise ValueError(file_uuid, filename, data_category, data_type)
-
-    elif data_category == GDC_DataCategory.TRANSCRIPTOME_PROFILING:
-
-        if data_type == GDC_DataType.MIRNA_EXPRESSION_QUANTIFICATION:
-            metadata = _get_expression_quantification_metadata(file_uuid)
-            
-            cases = metadata['cases']
-            assert len(cases) == 1, file_uuid
-            case_id = cases[0]['case_id']
-            case_submitter_id = cases[0]['submitter_id']
-            samples = metadata['cases'][0]['samples']
-            assert len(samples) == 1, file_uuid
-            sample_id = samples[0]['sample_id']
-            sample_submitter_id = samples[0]['submitter_id']
-            sample_type_id = samples[0]['sample_type_id']                      
-            
-            
-            if case_id not in known_cases:
-                known_cases[case_id] = {"submitter_id" : case_submitter_id}
-            if sample_id not in known_samples:
-                known_samples[sample_id] = {"submitter_id" : sample_submitter_id,
-                                            "sample_type_id" : sample_type_id,
-                                            "case_id" : case_id}
-
-            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                             workflow_type,
-                                                             data_category,
-                                                             data_type)
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-            
-            known_samples[sample_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            known_samples[sample_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        elif data_type == GDC_DataType.ISOFORM_EXPRESSION_QUANTIFICATION:
-            metadata = _get_expression_quantification_metadata(file_uuid)
-            
-            cases = metadata['cases']
-            assert len(cases) == 1, file_uuid
-            case_id = cases[0]['case_id']
-            case_submitter_id = cases[0]['submitter_id']
-            samples = metadata['cases'][0]['samples']
-            assert len(samples) == 1, file_uuid
-            sample_id = samples[0]['sample_id']
-            sample_submitter_id = samples[0]['submitter_id']
-            sample_type_id = samples[0]['sample_type_id']                      
-            
-            
-            if case_id not in known_cases:
-                known_cases[case_id] = {"submitter_id" : case_submitter_id}
-            if sample_id not in known_samples:
-                known_samples[sample_id] = {"submitter_id" : sample_submitter_id,
-                                            "sample_type_id" : sample_type_id,
-                                            "case_id" : case_id}
-
-            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                             workflow_type,
-                                                             data_category,
-                                                             data_type)
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-            
-            known_samples[sample_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            known_samples[sample_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        elif data_type == GDC_DataType.GENE_EXPRESSION_QUANTIFICATION:
-            metadata = _get_expression_quantification_metadata(file_uuid)
-            
-            cases = metadata['cases']
-            assert len(cases) == 1, file_uuid
-            case_id = cases[0]['case_id']
-            case_submitter_id = cases[0]['submitter_id']
-            samples = metadata['cases'][0]['samples']
-            assert len(samples) == 1, file_uuid
-            sample_id = samples[0]['sample_id']
-            sample_submitter_id = samples[0]['submitter_id']
-            sample_type_id = samples[0]['sample_type_id']                      
-            
-            
-            if case_id not in known_cases:
-                known_cases[case_id] = {"submitter_id" : case_submitter_id}
-            if sample_id not in known_samples:
-                known_samples[sample_id] = {"submitter_id" : sample_submitter_id,
-                                            "sample_type_id" : sample_type_id,
-                                            "case_id" : case_id}
-
-            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                             workflow_type,
-                                                             data_category,
-                                                             data_type)
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-            
-            known_samples[sample_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            known_samples[sample_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        else:
-            raise ValueError(file_uuid, data_category, data_type)
-        
-    elif data_category == GDC_DataCategory.SNV:
-
-        if data_type == GDC_DataType.RAW_SIMPLE_SOMATIC_MUTATION:
-            metadata = _get_paired_SNV_metadata(file_uuid)
-            
-            cases = metadata['cases']
-            assert len(cases) == 1, file_uuid
-            case_id = cases[0]['case_id']
-            case_submitter_id = cases[0]['submitter_id']
-            samples = metadata['cases'][0]['samples']
-            assert len(samples) == 2, file_uuid
-            
-
-            pair = dict()
-            for sample in samples:
-        
-                sample_id = sample['sample_id']
-                sample_submitter_id = sample['submitter_id']  
-                sample_type_id = sample['sample_type_id']
-                sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(sample_type_id)
-                assert sample_type_tn not in pair
-                pair[sample_type_tn] = {'uuid' : sample_id, 'submitter_id' : sample_submitter_id,
-                                        'type_id': sample_type_id}
-    
-            assert SampleType.TUMOR in pair and SampleType.NORMAL in pair
-            
-            if case_id not in known_cases:
-                known_cases[case_id] = {'submitter_id' : case_submitter_id}
-            tumor_sample = pair[SampleType.TUMOR] 
-            if tumor_sample['uuid'] not in known_samples:
-                sample_uuid = tumor_sample['uuid']
-                known_samples[sample_uuid]= {'submitter_id' : tumor_sample['submitter_id'],
-                                             'sample_type_id' : tumor_sample['type_id'],
-                                             'case_id' : case_id}
-            normal_sample = pair[SampleType.NORMAL]
-            if normal_sample['uuid'] not in known_samples:
-                sample_uuid = normal_sample['uuid']
-                known_samples[sample_uuid]= {'submitter_id' : normal_sample['submitter_id'],
-                                             'sample_type_id' : normal_sample['type_id'],
-                                             'case_id' : case_id}
-
-            pair_id = "{0}_{1}".format(tumor_sample['uuid'], normal_sample['uuid'])
-            if pair_id not in known_pairs:
-                known_pairs[pair_id] = {'tumor': tumor_sample['uuid'], 'normal': normal_sample['uuid']}
-
-            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                             workflow_type,
-                                                             data_category,
-                                                             data_type)
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-
-            known_pairs[pair_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            known_pairs[pair_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        elif data_type == GDC_DataType.ANNOTATED_SOMATIC_MUTATION:
-            metadata = _get_paired_SNV_metadata(file_uuid)
-            
-            cases = metadata['cases']
-            assert len(cases) == 1, file_uuid
-            case_id = cases[0]['case_id']
-            case_submitter_id = cases[0]['submitter_id']
-            samples = metadata['cases'][0]['samples']
-            assert len(samples) == 2, file_uuid
-
-            pair = dict()
-            for sample in samples:
-        
-                sample_id = sample['sample_id']
-                sample_submitter_id = sample['submitter_id']  
-                sample_type_id = sample['sample_type_id']
-                sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(sample_type_id)
-                assert sample_type_tn not in pair
-                pair[sample_type_tn] = {'uuid' : sample_id, 'submitter_id' : sample_submitter_id,
-                                        'type_id': sample_type_id}
-    
-            assert SampleType.TUMOR in pair and SampleType.NORMAL in pair
-            
-            if case_id not in known_cases:
-                known_cases[case_id] = {'submitter_id' : case_submitter_id}
-            tumor_sample = pair[SampleType.TUMOR] 
-            if tumor_sample['uuid'] not in known_samples:
-                sample_uuid = tumor_sample['uuid']
-                known_samples[sample_uuid]= {'submitter_id' : tumor_sample['submitter_id'],
-                                             'sample_type_id' : tumor_sample['type_id'],
-                                             'case_id' : case_id}
-            normal_sample = pair[SampleType.NORMAL]
-            if normal_sample['uuid'] not in known_samples:
-                sample_uuid = normal_sample['uuid']
-                known_samples[sample_uuid]= {'submitter_id' : normal_sample['submitter_id'],
-                                             'sample_type_id' : normal_sample['type_id'],
-                                             'case_id' : case_id}
-
-            pair_id = "{0}_{1}".format(tumor_sample['uuid'], normal_sample['uuid'])
-            if pair_id not in known_pairs:
-                known_pairs[pair_id] = {'tumor': tumor_sample['uuid'], 'normal': normal_sample['uuid']}
-
-            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                             workflow_type,
-                                                             data_category,
-                                                             data_type)
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-
-            known_pairs[pair_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            known_pairs[pair_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        elif data_type == GDC_DataType.AGGREGATED_SOMATIC_MUTATION:
-            metadata = _get_aggregated_SNV_metadata(file_uuid)
-            cases = metadata['cases']
-            assert len(cases) > 0, file_uuid
-            
-            # don't bother creating pair sets; will just attach to all 
-            # associated tumor samples that non-aggregated files are linked to
- 
-            deferred_file_uuids.append(file_uuid)           
-                
-        elif data_type == GDC_DataType.MASKED_SOMATIC_MUTATION:
-            metadata = _get_aggregated_SNV_metadata(file_uuid)
-            cases = metadata['cases']
-            assert len(cases) > 0, file_uuid
-
-            # don't bother creating pair sets; will just attach to all 
-            # associated tumor samples that non-aggregated files are linked to
-        
-            deferred_file_uuids.append(file_uuid)            
-            
-
-            
+    if data_category in set([GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN]): 
+        metadataRetriever = CaseMetadataRetriever(gdc_api_root)
     else:
-        raise ValueError(file_uuid, filename, data_category)
-        
-    return
+        metadataRetriever = CaseSampleMetadataRetriever(gdc_api_root)
 
-def process_deferred_file_uuid(file_uuid, file_url, known_cases, known_samples):
+    # quick fix for legacy image data - will clean up
+    if data_type in set([GDC_DataType.TISSUE_SLIDE_IMAGE, GDC_DataType.DIAGNOSTIC_IMAGE]):
+        metadataRetriever = CaseSampleMetadataRetriever(gdc_api_root)
+
+    metadata = metadataRetriever.get_metadata(file_uuid)
+
+    cases = metadata['cases']
+    num_associated_cases = len(cases)
+    assert num_associated_cases > 0, file_uuid
+
+    num_associated_samples = 0
+    samples = None
+    if num_associated_cases == 1 and 'samples' in cases[0]:
+        samples = cases[0]['samples']
+        num_associated_samples = len(samples)
+
+    # first consider files that are associated with a single case
+    if num_associated_cases == 1:
+        if num_associated_samples == 0:
+            case_id = _add_to_knowncases(cases[0], known_cases)
+            _add_file_attribute(known_cases[case_id], file_uuid, filename, file_url,
+                                data_category, data_type, experimental_strategy, workflow_type, access)
+        elif num_associated_samples == 1:
+            case_id = _add_to_knowncases(cases[0], known_cases)
+            sample_id, _ = _add_to_knownsamples(samples[0], case_id, known_samples)
+            _add_file_attribute(known_samples[sample_id], file_uuid, filename, file_url, 
+                                data_category, data_type, experimental_strategy, workflow_type, access)
+        elif num_associated_samples == 2:
+            case_id = _add_to_knowncases(cases[0], known_cases)
+            sample1_id, sample1_type_tn = _add_to_knownsamples(samples[0], case_id, known_samples)
+            sample2_id, sample2_type_tn = _add_to_knownsamples(samples[1], case_id, known_samples)
+            assert sample1_type_tn != sample2_type_tn
+            if sample1_type_tn == SAMPLE_TYPE.TUMOR:
+                tumor_sample_id = sample1_id
+                normal_sample_id = sample2_id
+            else:
+                tumor_sample_id = sample2_id
+                normal_sample_id = sample1_id
+
+            pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
+            _add_file_attribute(known_pairs[pair_id], file_uuid, filename, file_url,
+                                data_category, data_type, experimental_strategy, workflow_type, access)
+        else:
+            # file associated with more than two samples from a single case
+            # not sure how to process this...don't believe there are any such files in GDC
+            raise ValueError(file_uuid, filename, data_category)
+
+    else:
+        # file associated with multiple cases
+        # we will record file_uuid and deal with later
+        deferred_file_uuids.append([file_uuid, filename])
+
+# may eventually drop this and incorporate into get_file_metadata.  Wasn't sure what to do with files
+# associated with multiple cases or files associated with samples across multiple cases.
+# For now we only include files in data model if they are associated with cases and samples that were
+# pulled in from other files in manifest that were associated with single cases.
+def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, known_cases, known_samples):
     
     # get data file's name, category, type, access, format experimental strategy, workflow type
+    fileMetadataRetriever = FileMetadataRetriever(gdc_api_root)
+    responseDict = fileMetadataRetriever.get_metadata(file_uuid)
 
-    fields = "file_name,data_category,data_type,access, data_format,experimental_strategy,analysis.workflow_type"
-    url = "{0}/files/{1}?fields={2}".format(GDC_API_ROOT, file_uuid, fields)
-    response = requests.get(url, headers=None)
-    responseDict = response.json()
-    #pp.pprint(responseDict)
-    filename = responseDict['data']['file_name']
-    data_category = responseDict['data']['data_category']
-    data_type = responseDict['data']['data_type']
-    access = responseDict['data']['access']
-    if 'data_format' in responseDict['data']:
-        data_format = responseDict['data']['data_format']
+    data_category = responseDict['data_category']
+    data_type = responseDict['data_type']
+    access = responseDict['access']
+
+    if 'data_format' in responseDict:
+        data_format = responseDict['data_format']
     else:
         data_format = None
     
-    if 'experimental_strategy' in responseDict['data']:
-        experimental_strategy = responseDict['data']['experimental_strategy']
+    if 'experimental_strategy' in responseDict:
+        experimental_strategy = responseDict['experimental_strategy']
     else: 
         experimental_strategy = None
-    if 'analysis' in responseDict['data'] and 'workflow_type' in responseDict['data']['analysis']:
-        workflow_type = responseDict['data']['analysis']['workflow_type']
+    if 'analysis' in responseDict and 'workflow_type' in responseDict['analysis']:
+        workflow_type = responseDict['analysis']['workflow_type']
     else:
         workflow_type = None
         
+    if data_category == GDC_DataCategory.CLINICAL or data_category == GDC_DataCategory.BIOSPECIMEN:
+        metadataRetriever = CaseMetadataRetriever(gdc_api_root)
+    else:
+        metadataRetriever = CaseSampleMetadataRetriever(gdc_api_root)
 
+    metadata = metadataRetriever.get_metadata(file_uuid)
 
-    if data_category == GDC_DataCategory.CLINICAL:
-        if data_type == GDC_DataType.CLINICAL_SUPPLEMENT:
-            metadata = _get_clinical_biospecimen_supplement_metadata(file_uuid)
-            cases = metadata['cases']
-            assert len(cases) > 1, file_uuid
-            for case in cases:
-                case_id = case['case_id']
-                if case_id in known_cases:
-                    basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                                     workflow_type,
-                                                                     data_category,
-                                                                     data_type)
-                    GDC_FILE_ACCESS.recordFileAccessType(basename, access)
+    cases = metadata['cases']
+    num_associated_cases = len(cases)
+    assert num_associated_cases > 1, file_uuid
 
-                    known_cases[case_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-                    known_cases[case_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        else:
-            raise ValueError(file_uuid, filename, data_category, data_type)
-    
-    elif data_category == GDC_DataCategory.BIOSPECIMEN:
-        if data_type == GDC_DataType.BIOSPECIMEN_SUPPLEMENT:
-            metadata = _get_clinical_biospecimen_supplement_metadata(file_uuid)
-            cases = metadata['cases']
-            assert len(cases) > 1, file_uuid
-            for case in cases:
-                case_id = case['case_id']
-                if case_id in known_cases:
-                    basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                                     workflow_type,
-                                                                     data_category,
-                                                                     data_type)
-
-                    GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-
-                    known_cases[case_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-                    known_cases[case_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-        else:
-            raise ValueError(file_uuid, filename, data_category, data_type)
-
-    elif data_category == GDC_DataCategory.SNV:                 
-        if data_type == GDC_DataType.AGGREGATED_SOMATIC_MUTATION:
-            metadata = _get_aggregated_SNV_metadata(file_uuid)
-            cases = metadata['cases']
-            assert len(cases) > 0, file_uuid
-
-            for case in cases:
+    for case in cases:
+        case_id = case['case_id']
+        if case_id in known_cases:
+            case_id = _add_to_knowncases(case, known_cases)
+            if 'samples' in case:
+                # associated with samples
                 samples = case['samples']
                 for sample in samples:
                     sample_id = sample['sample_id']
                     if sample_id in known_samples:
-                        sample_type_id = sample['sample_type_id']
-                        sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(sample_type_id)
-                        if sample_type_tn == SampleType.TUMOR:
-
-                            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                                             workflow_type,
-                                                                             data_category,
-                                                                             data_type)
-                            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-
-                            known_samples[sample_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-                            known_samples[sample_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
-
-        elif data_type == GDC_DataType.MASKED_SOMATIC_MUTATION:
-            metadata = _get_aggregated_SNV_metadata(file_uuid)
-            cases = metadata['cases']
-            assert len(cases) > 0, file_uuid
-
-            for case in cases:
-                samples = case['samples']            
-                for sample in samples:
-                    sample_id = sample['sample_id']
-                    if sample_id in known_samples:
-                        sample_type_id = sample['sample_type_id']
-                        sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(sample_type_id)
-            
-                        if sample_type_tn == SampleType.TUMOR:
-                            basename = GDC_TO_FC.constructAttributeName_base(experimental_strategy,
-                                                                             workflow_type,
-                                                                             data_category,
-                                                                             data_type)
-                            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
-                            
-                            known_samples[sample_id][basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-                            known_samples[sample_id][basename + URL_ATTRIBUTE_SUFFIX] = file_url
+                        _add_file_attribute(known_samples[sample_id], file_uuid, filename, file_url,
+                                            data_category, data_type, experimental_strategy, workflow_type, access)
+            else:
+                # associated with multiple cases only
+                _add_file_attribute(known_cases[case_id], file_uuid, filename, file_url,
+                                    data_category, data_type, experimental_strategy, workflow_type, access)
 
 def create_participants_file(cases, manifestFileBasename):
     
@@ -905,7 +523,6 @@ def create_participants_file(cases, manifestFileBasename):
             if attribute_name not in {'submitter_id'} and attribute_name not in attribute_names:
                 attribute_names.append(attribute_name)
 
-    #pp.pprint(attribute_names)
     participants_filename = manifestFileBasename + '_participants.txt'
     participant_sets_membership_filename = manifestFileBasename + '_participant_sets_membership.txt'
     
@@ -1030,6 +647,7 @@ def main():
     parser = argparse.ArgumentParser(description='create FireCloud workspace load files from GDC manifest')
     parser.add_argument("manifest", help="manifest file downloaded from the GDC Data Portal")
     parser.add_argument("-r", "--resolve_uuids", help="resolve uuids in the manifest to urls")
+    parser.add_argument("-l", "--legacy", help="point to GDC Legacy Archive", action="store_true")
     args = parser.parse_args()
 
     print("manifestFile = {0}".format(args.manifest))
@@ -1039,7 +657,7 @@ def main():
     uuidResolver = None
     if args.resolve_uuids is not None:
         uuidResolver = gdc_uuidresolver.UuidResolver(args.resolve_uuids, '__DELETE__')
-        
+
     pp = pprint.PrettyPrinter()
 
     cases = dict()
@@ -1048,6 +666,8 @@ def main():
     deferred_file_uuids = []
 
     manifestFileList = _read_manifestFile(manifestFile)
+
+    gdc_api_root = GDC_LEGACY_API_ROOT if args.legacy else GDC_API_ROOT
 
     for i, item in enumerate(manifestFileList):
 
@@ -1059,14 +679,28 @@ def main():
 
         for attempt in range(5):
             try:
-   
-                url = "{0}/files/{1}".format(GDC_API_ROOT, file_uuid)
-                response = requests.get(url, headers=None)
-                responseDict = response.json()
-    
-                get_file_metadata(file_uuid, filename, file_url, cases, samples, 
-                                  pairs, deferred_file_uuids)
+                get_file_metadata(gdc_api_root, file_uuid, filename, file_url, cases, samples, 
+                                    pairs, deferred_file_uuids)
+                break
+            except (KeyboardInterrupt, SystemExit, KeyError):
+                raise
+            except Exception as x:
+                print("Exception=", x)
+                print("attempt=", attempt, 'file uuid = ', file_uuid)
+        else:
+            #failed all attempts
+            # - just move on
+            if attempt == 5:
+                print("failed 5 attempts! SKIPPING FILE: file uuid = ", file_uuid)
 
+    for uuid_and_filename in deferred_file_uuids:
+        file_uuid = uuid_and_filename[0]
+        filename = uuid_and_filename[1]
+        file_url =  file_url = uuidResolver.getURL(file_uuid) if uuidResolver is not None else "__DELETE__"
+
+        for attempt in range(5):
+            try:
+                process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, cases, samples)
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as x:
@@ -1080,18 +714,6 @@ def main():
             # - just move on
             print("failed 5 attempts! SKIPPING FILE: file uuid = ", file_uuid)
             continue
-
-    for file_uuid in deferred_file_uuids:
-        file_url =  file_url = uuidResolver.getURL(file_uuid) if uuidResolver is not None else "__DELETE__"
-        process_deferred_file_uuid(file_uuid, file_url, cases, samples)
-
-    #print("cases:")
-    #pp.pprint(cases)
-    #print("samples:")
-    #pp.pprint(samples)
-    #print("pairs:")
-    #pp.pprint(pairs)
-
 
     manifestFileBasename = os.path.splitext(os.path.basename(manifestFile))[0]
 
