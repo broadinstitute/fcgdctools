@@ -2,7 +2,12 @@
 A python project containing utilities to support intereoperability between FireCloud and the [NIH/NCI Genomics Data Commons](https://gdc.cancer.gov/).  The project currently contains the tool `genFcWsLoadFiles` for creating FireCloud workspace load files (TSV-formatted files) from a file manifest downloaded from the GDC.  The manifest may have been downloaded from either the GDC's main or legacy archive portal.  Additional tools will be added over time.  
 
 ## Requirements
-fcgdctools requires python 3
+
+fcgdctools requires: 
+
+* python 3 
+* python 3 `requests` package.  Install command: `pip3 install requests` 
+
 
 ## Installation
 
@@ -15,6 +20,8 @@ To get started, from a command line terminal clone the repo, build, and install:
 	% python3 setup.py install
 ```
 Note that if you are installing to a protected location, you may need to preface the `python3 setup.py install` command with `sudo`.  
+
+We plan on making fcgdctools installable via pip3 (from [PyPI](https://pypi.python.org/pypi)), and will update these instructions when the fcgdctools package is submitted to the PyPI repository.
 
 ## Description
 Following installation you should be able to run the `genFcWsLoadFiles` command from the command line

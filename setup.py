@@ -26,5 +26,6 @@ setup(
         'console_scripts': [
             'genFcWsLoadFiles=fcgdctools.fc_loadfiles:main',
         ],
-    }
+    },
+    install_requires=['requests']
 )    
