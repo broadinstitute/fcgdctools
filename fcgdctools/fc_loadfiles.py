@@ -228,12 +228,12 @@ class MetadataRetriever():
 
 class CaseMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root):
-        fields = "cases.case_id,cases.submitter_id"
+        fields = "cases.case_id,cases.submitter_id,cases.project.project_id"
         MetadataRetriever.__init__(self, gdc_api_root, fields)
     
 class CaseSampleMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root):
-        fields = "cases.case_id,cases.submitter_id"
+        fields = "cases.case_id,cases.submitter_id,cases.project.project_id"
         fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id"
         MetadataRetriever.__init__(self, gdc_api_root, fields)
 
@@ -265,7 +265,8 @@ def _add_to_knowncases(case_metadata, known_cases):
     case_id = case_metadata['case_id']
     if case_id not in known_cases:
         submitter_id = case_metadata['submitter_id']
-        new_case = {'submitter_id' : submitter_id}
+        project_id = case_metadata['project']['project_id']
+        new_case = {'submitter_id' : submitter_id, 'project_id' : project_id}
         known_cases[case_id] = new_case
     return case_id
 
@@ -520,14 +521,14 @@ def create_participants_file(cases, manifestFileBasename):
     attribute_names = []
     for case_id, case in cases.items():
         for attribute_name in case:
-            if attribute_name not in {'submitter_id'} and attribute_name not in attribute_names:
+            if attribute_name not in attribute_names:
                 attribute_names.append(attribute_name)
-
+    
     participants_filename = manifestFileBasename + '_participants.txt'
     participant_sets_membership_filename = manifestFileBasename + '_participant_sets_membership.txt'
     
     with open(participants_filename, 'w') as participantsFile, open(participant_sets_membership_filename, 'w') as membershipFile:
-        fieldnames = ['entity:participant_id', 'submitter_id'] + attribute_names
+        fieldnames = ['entity:participant_id'] + attribute_names
         participants_writer = csv.DictWriter(participantsFile, fieldnames=fieldnames, delimiter='\t')
         participants_writer.writeheader()
 
@@ -536,7 +537,7 @@ def create_participants_file(cases, manifestFileBasename):
         membership_writer.writeheader()
         
         for case_id, case in cases.items():
-            entity_row = {'entity:participant_id': case_id, 'submitter_id' : case['submitter_id']}
+            entity_row = {'entity:participant_id': case_id}
             for attribute_name in attribute_names:
                 if attribute_name in case:
                     entity_row[attribute_name] = case[attribute_name]
@@ -642,6 +643,13 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
             membership_writer.writerow(row)
 
 
+def create_workspace_order_file(manifestFileBasename):
+    #This part is hardcoded due to the small number of columns we want/need to be ordered.
+    #Please feel free to change this specification according to your needs.
+    with open(manifestFileBasename + "_workspace_attribute_order.txt", 'w') as workspaceColumnOrderFile:
+        workspaceColumnOrderFile.write("workspace:workspace-column-defaults\n")
+        workspaceColumnOrderFile.write("{\"participant\": {\"shown\": [\"submitter_id\", \"project_id\", \"participant_id\"]}, \"sample\":{\"shown\":[\"submitter_id\", \"sample_id\", \"participant\"]}, \"pair\":{\"shown\":[\"tumor_submitter_id\", \"normal_submitter_id\", \"pair_id\"]}}")
+
 def main():
 
     parser = argparse.ArgumentParser(description='create FireCloud workspace load files from GDC manifest')
@@ -690,8 +698,7 @@ def main():
         else:
             #failed all attempts
             # - just move on
-            if attempt == 5:
-                print("failed 5 attempts! SKIPPING FILE: file uuid = ", file_uuid)
+            print("failed 5 attempts! SKIPPING FILE: file uuid = ", file_uuid)
 
     for uuid_and_filename in deferred_file_uuids:
         file_uuid = uuid_and_filename[0]
@@ -721,6 +728,10 @@ def main():
     create_samples_file(samples, manifestFileBasename)
     if len(pairs) != 0:
         create_pairs_file(pairs, samples, manifestFileBasename)
+
+    #This part creates a file that specifies the default order of columns when shown in the workspace.
+    create_workspace_order_file(manifestFileBasename)
+    
 
 if __name__ == '__main__':
     main()
