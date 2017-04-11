@@ -334,10 +334,9 @@ def _constructImageAttributeName_base(experimental_strategy, workflow_type, data
     elif 'MS' in image_code:
         image_abbrev = 'middle'
     else:
-        image_abbrev=image_name[0:2]
+        image_abbrev=image_code[0:2]
 
-    image_abbrev = image_abbrev
-
+    
     attribute_name_base = experimental_strategy_abbrev + workflow_type_abbrev + data_type_lc + image_abbrev
 
     return attribute_name_base, portion
