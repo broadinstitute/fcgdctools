@@ -642,12 +642,16 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
             membership_writer.writerow(row)
 
 
-def create_workspace_order_file(manifestFileBasename):
-    #This part is hardcoded due to the small number of columns we want/need to be ordered.
+def create_workspace_attributes_file(manifestFileBasename, is_legacy):
+    #This part is hardcoded due to the small number of attributes we need to specify.
     #Please feel free to change this specification according to your needs.
+    legacy_flag=""
+    if is_legacy:
+        legacy_flag="-l"
+
     with open(manifestFileBasename + "_workspace_attribute_order.txt", 'w') as workspaceColumnOrderFile:
-        workspaceColumnOrderFile.write("workspace:workspace-column-defaults\n")
-        workspaceColumnOrderFile.write("{\"participant\": {\"shown\": [\"submitter_id\", \"project_id\", \"participant_id\"]}, \"sample\":{\"shown\":[\"submitter_id\", \"sample_id\", \"participant\"]}, \"pair\":{\"shown\":[\"tumor_submitter_id\", \"normal_submitter_id\", \"pair_id\"]}}")
+        workspaceColumnOrderFile.write("workspace:workspace-column-defaults\tlegacy_flag\n")
+        workspaceColumnOrderFile.write("{\"participant\": {\"shown\": [\"submitter_id\", \"project_id\", \"participant_id\"]}, \"sample\":{\"shown\":[\"submitter_id\", \"sample_id\", \"participant\"]}, \"pair\":{\"shown\":[\"tumor_submitter_id\", \"normal_submitter_id\", \"pair_id\"]}}"+"\t"+legacy_flag)
 
 def main():
 
@@ -728,8 +732,11 @@ def main():
     if len(pairs) != 0:
         create_pairs_file(pairs, samples, manifestFileBasename)
 
-    #This part creates a file that specifies the default order of columns when shown in the workspace.
-    create_workspace_order_file(manifestFileBasename)
+    #This part creates a file that specifies the workspace attributes. 
+    #The attributes are:
+    # 1.Default order of columns when shown in the workspace.
+    # 2.Whether the workspace is meant to deal with data fom the legacy site or not.
+    create_workspace_attributes_file(manifestFileBasename, args.legacy)
     
 
 if __name__ == '__main__':
