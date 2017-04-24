@@ -76,7 +76,7 @@ Here are some examples of attribute values corresponding to the above attribute 
 ```
 The tool also creates load files for defining sets of participants, samples and pairs.  An entity set is defined for each file attribute attached to that entity type; the set consists of those entities that have a non-empty value for that attribute.  The set may be used to target workflows that operate on that file type.  In particular, the set may be use to run a workflow that retrieves from the GDC the files referenced by the corresponding attribute.  
 
-The sets' have the following identifier naming convention:
+The sets have the following identifier naming convention:
 
 ```
 	(OA|CA)__<attribute basename>
@@ -96,7 +96,14 @@ Here are some example set identifiers:
 	CA__WXS__MuTect2__raw_simple_somatic_mutation
 	
 ```
+If your manifest was downloaded from the GDC Legacy Archive, you must use the `-l` option.
 
 The optional input `RESOLVE_UUIDS` is a TSV file containing mappings of file uuids to urls of the locations of the files on cloud storage.  If this optional input is provided, `genFcWsLoadFiles` will add to the load files it generates attributes with suffix `__url`, which contain the url mapped to the uuid.
 
-If your manifest was downloaded from the GDC Legacy Archive, you must use the `-l` option.
+Finally, the tool creates a .tsv file with general workflow attributes.
+Right now, the two attributes that are created are:
+legacy_flag - a flag that indicates if the manifest was downloaded from the legacy archive. The flag is needed for other scripts to know where to get more file information from, e.g. the size of a file. The flag is boolean and equals "true" or "false".
+workspace-column-defaults - the default order in which the attribute columns should be shown in the table.
+
+Other attributes can be added if needed.
+
