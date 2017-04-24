@@ -102,8 +102,10 @@ The optional input `RESOLVE_UUIDS` is a TSV file containing mappings of file uui
 
 Finally, the tool creates a .tsv file with general workflow attributes.
 Right now, the two attributes that are created are:
-legacy_flag - a flag that indicates if the manifest was downloaded from the legacy archive. The flag is needed for other scripts to know where to get more file information from, e.g. the size of a file. The flag is boolean and equals "true" or "false".
-workspace-column-defaults - the default order in which the attribute columns should be shown in the table.
+
+`legacy_flag` - a flag that indicates if the manifest was downloaded from the legacy archive. The flag is needed for other scripts to know where to get more file information from, e.g. the size of a file. The flag is boolean and equals "true" or "false".
+
+`workspace-column-defaults` - the default order in which the attribute columns should be shown in the table.
 
 Other attributes can be added if needed.
 
