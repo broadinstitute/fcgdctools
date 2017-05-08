@@ -653,7 +653,7 @@ def create_workspace_attributes_file(manifestFileBasename, is_legacy):
     #Any new attributes should be added before workspace-colunm-defaults
     with open(manifestFileBasename + "_workspace_attribute_order.txt", 'w') as workspaceColumnOrderFile:
         workspaceColumnOrderFile.write("workspace:legacy_flag\tworkspace-column-defaults\n")
-        workspaceColumnOrderFile.write(legacy_flag + "\t" + "{\"participant\": {\"shown\": [\"submitter_id\", \"project_id\", \"participant_id\"]}, \"sample\":{\"shown\":[\"submitter_id\", \"sample_id\", \"participant\"]}, \"pair\":{\"shown\":[\"tumor_submitter_id\", \"normal_submitter_id\", \"pair_id\"]}}")
+        workspaceColumnOrderFile.write(legacy_flag + "\t" + "{\"participant\": {\"shown\": [\"submitter_id\", \"project_id\", \"participant_id\"]}, \"sample\":{\"shown\":[\"submitter_id\", \"sample_id\", \"participant\", \"sample_type\"]}, \"pair\":{\"shown\":[\"tumor_submitter_id\", \"normal_submitter_id\", \"pair_id\"]}}")
 
 def main():
 
