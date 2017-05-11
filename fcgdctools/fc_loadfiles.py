@@ -367,6 +367,17 @@ def _add_file_attribute(entity, file_uuid, filename, file_url,
         basename = _constructAttributeName_base(experimental_strategy, workflow_type,
                                                 data_category, data_type)
 
+        # CBB - check for multiple files mapped to same attribute
+        # The current logic has us overwrite earlier attribute values with later values
+        # so what ends up in the data model is the file listed last in the manifest.
+        # Let's first track how frequently this occurs and for what file types it occurs;
+        # then we can decide how to address it.  It may be that for each 
+        # file type there is a different prioritization rule, based on different
+        # file attributes (some of which we may not yet be pulling down from the GDC).
+        attribute_name = basename + UUID_ATTRIBUTE_SUFFIX
+        if attribute_name in entity:
+            print("multiple files for same attirubte! uuid = {0}, file name = {1}".format(file_uuid, filename))
+
         GDC_FILE_ACCESS.recordFileAccessType(basename, access)
 
         entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
