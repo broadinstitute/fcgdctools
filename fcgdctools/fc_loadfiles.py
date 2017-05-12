@@ -377,6 +377,9 @@ def _add_file_attribute(entity, file_uuid, filename, file_url,
         attribute_name = basename + UUID_ATTRIBUTE_SUFFIX
         if attribute_name in entity:
             print("multiple files for same attirubte! uuid = {0}, file name = {1}".format(file_uuid, filename))
+            print("attribute name is {0}".format(attribute_name))
+            print("entity is: {0}".format(entity['submitter_id']))
+            print("existing filename: {0}".format(entity[attribute_name]))
 
         GDC_FILE_ACCESS.recordFileAccessType(basename, access)
 
