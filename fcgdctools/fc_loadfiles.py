@@ -100,7 +100,7 @@ WORKFLOW_ABBREVIATIONS = {
         'VarScan2 Annotation' : 'VarScan2Annot',
         'MuSE Annotation' : 'MuSEAnnot',
         'MuSE Variant Aggregation and Masking' : 'MuSEAggrMask',
-        'MuTect2 Variant Aggregation and Masking' : 'MuSEAggrMask',
+        'MuTect2 Variant Aggregation and Masking' : 'MuTect2AggrMask',
         'SomaticSniper Variant Aggregation and Masking' : 'SomSnipAggrMask',
         'VarScan2 Variant Aggregation and Masking' : 'VarScan2AggrMask',
         'BCGSC miRNA Profiling' : 'BCGSCmiRNA',
@@ -515,7 +515,6 @@ def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, know
     for case in cases:
         case_id = case['case_id']
         if case_id in known_cases:
-            case_id = _add_to_knowncases(case, known_cases)
             if 'samples' in case:
                 # associated with samples
                 samples = case['samples']
