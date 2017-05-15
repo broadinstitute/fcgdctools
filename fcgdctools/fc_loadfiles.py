@@ -10,6 +10,7 @@ import argparse
 import pprint
 import os.path
 import sys
+import time
 
 from fcgdctools import gdc_uuidresolver 
 
@@ -378,7 +379,6 @@ def _add_file_attribute(entity, file_uuid, filename, file_url,
         if attribute_name in entity:
             print("multiple files for same attirubte! uuid = {0}, file name = {1}".format(file_uuid, filename))
             print("attribute name is {0}".format(attribute_name))
-            print("entity is: {0}".format(entity['submitter_id']))
             print("existing filename: {0}".format(entity[attribute_name]))
 
         GDC_FILE_ACCESS.recordFileAccessType(basename, access)
@@ -732,6 +732,7 @@ def main():
             except Exception as x:
                 print("Exception=", x)
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
+                time.sleep(5)
                 raise
             else:
                 break
