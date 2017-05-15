@@ -224,8 +224,13 @@ class MetadataRetriever():
         url = "{0}/files/{1}?fields={2}".format(self.gdc_api_root, file_uuid, self.fields)
         response = requests.get(url, headers=None)
         responseDict = response.json()
-
-        return responseDict['data']
+        try:
+            retrun_value = responseDict['data']
+        except Exception as x:
+            print("exception is: {0}".format(x))
+            print(responseDict)
+            raise x
+        return retrun_value
 
 class CaseMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root):
@@ -391,7 +396,10 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
     # get from GDC the data file's category, type, access type, format, experimental strategy,
     # analysis workflow type
     fileMetadataRetriever = FileMetadataRetriever(gdc_api_root)
-    responseDict = fileMetadataRetriever.get_metadata(file_uuid)
+    try:
+        responseDict = fileMetadataRetriever.get_metadata(file_uuid)
+    except Exception as x:
+        raise x
     
     try:
         data_category = responseDict['data_category']
