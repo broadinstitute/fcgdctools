@@ -4,7 +4,7 @@ import sys
 import argparse
 import os
 import datetime
-import fiss.firecloud.api as api
+import firecloud.api as api
 
 def build_filter_json(filter_attrs):
 	filt = {

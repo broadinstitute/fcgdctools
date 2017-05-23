@@ -4,7 +4,7 @@ import sys
 import argparse
 import os
 import datetime
-import fiss.firecloud.api as api
+import firecloud.api as api
 from manifest_downloader import build_filter_json, download_manifest
 
 FILE_TYPE_DICT = {
@@ -111,14 +111,17 @@ def main():
 
     #STEP 1:
     #Create new directory for the cohort and switch wd to this directory
-    new_dir_name = args.project_name+"-"+args.cohort_name + "_" + args.auth_domain
+    if args.auth_domain:
+    	new_dir_name = args.project_name + "-" + args.cohort_name + "_" + args.auth_domain
+    else:
+    	new_dir_name = args.project_name + "-" + args.cohort_name
     os.mkdir(new_dir_name)
     print("Created new directory for the {0} cohort".format(args.cohort_name))
     os.chdir(new_dir_name)
     print("Switched working directory to ./{0}".format(new_dir_name))
 
 	#STEP 2:
-	#Create creteria for downloading manifest and download it.    
+	#Create creteria for downloading manifest and then download it.    
     #Right now the file types that are selected for a new workspace depend on whether that workspace is to have open/controlled access to the GDC data portal.
     #This code will need to be redesigned, or new keys will have to be added to the dictionary if this assumption ever changes.
     if args.auth_domain:
@@ -139,13 +142,13 @@ def main():
     
     #Step 3:
     #Run fcgdctools on the manifest file
-    fcgdctools_command = "genFcWsLoadFiles "+manifest_filename+">genFcWsLoadFiles_output.txt"
+    fcgdctools_command = "python3 ~/Projects/fcgdctools/fcgdctools/fc_loadfiles.py " + manifest_filename + ">genFcWsLoadFiles_output.txt"
     print("Executing command {0}\nPlease check the output file to see progress and check for errors.".format(fcgdctools_command))
     os.system(fcgdctools_command)
     
     #Step 4:
     #Prepare attributes to be loaded
-    workspace_attribute_filename = manifest_filename.split(".")[0]+"_workspace_attributes.txt"
+    workspace_attribute_filename = manifest_filename.split(".")[0] + "_workspace_attributes.txt"
     attribute_list = prepare_workspace_attribute_list(workspace_attribute_filename, args.auth_domain)
     
     #Step 5:
