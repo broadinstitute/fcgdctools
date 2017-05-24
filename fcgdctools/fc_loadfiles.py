@@ -799,7 +799,7 @@ def create_workspace_attributes_file(manifestFileBasename, is_legacy):
 def main():
     parser = argparse.ArgumentParser(description='create FireCloud workspace load files from GDC manifest')
     parser.add_argument("manifest", help="manifest file from the GDC Data Portal")
-    parser.add_argument("-r", "--resolve_uuids", help="resolve uuids in the manifest to urls")
+    parser.add_argument("-r", "--resolve_uuids", help="TSV file mapping GDC UUIDs to URLs")
     parser.add_argument("-l", "--legacy", help="point to GDC Legacy Archive", action="store_true")
     args = parser.parse_args()
 
