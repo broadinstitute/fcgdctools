@@ -144,15 +144,15 @@ class GDC_FileAccess:
 
     def recordFileAccessType(self, file_attribute_base_name, access_type):
          
-        assert access_type in [GDC_FileAccessType.OPEN, GDC_FileAccessType.CONTROLLED]
+        assert access_type in [GDC_FileAccessType.OPEN, GDC_FileAccessType.CONTROLLED], "unexpected file access type"
         
         if file_attribute_base_name in self.gdcFileAccess:
-            assert self.gdcFileAccess[file_attribute_base_name] == access_type
+            assert self.gdcFileAccess[file_attribute_base_name] == access_type, "inconsistent file access type"
         else:
             self.gdcFileAccess[file_attribute_base_name] = access_type
         
     def getAccessTypePrefix(self, file_attribute_base_name):
-        assert file_attribute_base_name in self.gdcFileAccess, file_attribute_base_name
+        assert file_attribute_base_name in self.gdcFileAccess, "file_attribute_base_name not in gdcFileAccess dict"
         return self.accessTypePrefix[self.gdcFileAccess[file_attribute_base_name]]
 
 GDC_FILE_ACCESS = GDC_FileAccess()
@@ -379,35 +379,47 @@ def _pick_tcga_submitter(a, b):
 
 def _pick_target_submitter(a,b):
     # TODO: implement this after implementation method is decided.
-    return
+    return a
 
 
-def _resolve_collision(gdc_api_root, uuid1, name1, uuid2, name2):
-    # TODO: Adapt the code to the general case of files that aren't VCFs but have multiple samples associated with one case.
-    if name1.endswith("vcf") or name1.endswith("vcf.gz"):
-        is_vcf = True
-    else:
-        is_vcf = False
-    # VCF files ae associated with one case but multiple samples. The choice of the right file is made according to the Tumor sample.
-    if is_vcf:
-        file_fields = "cases.project.program.name,cases.samples.sample_type,cases.samples.portions.analytes.aliquots.submitter_id"
+def _resolve_collision(gdc_api_root, data_category, data_type, uuid1, name1, uuid2, name2):
+
+    # NOTE: we chose not to employ the created_datetime or updated_datetime fields in 
+    # our decision logic.  From what we can tell, neither should be used to make a selection between 
+    # two files.
+
+
+    # get aliquot submitter IDs
+    aliquot_submitter_id1 = None
+    aliquot_submitter_id2 = None
+
+    # SNV files associated with two samples: tumor and normal. The choice of the right file is made according to the Tumor sample.
+    # note: conditional logic below to accommodate legacy archive
+    if data_category.lower() == GDC_DataCategory.SNV.lower() and data_type not in set([GDC_DataType.AGGREGATED_SOMATIC_MUTATION, GDC_DataType.MASKED_SOMATIC_MUTATION]):
+
+        file_fields = "cases.project.program.name,cases.samples.sample_type,cases.samples.portions.analytes.aliquots.submitter_id,cases.samples.sample_type_id"
         meta_retriever = MetadataRetriever(gdc_api_root, file_fields)
 
         data1 = meta_retriever.get_metadata(uuid1)
         samples_list1 = data1['cases'][0]['samples']
         for s in samples_list1:
-            if "Tumor" in s['sample_type']:
-                submitter_id1 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
+            sample_type = SAMPLE_TYPE.getTumorNormalClassification(s['sample_type_id'])
+            if sample_type == SAMPLE_TYPE.TUMOR:
+                aliquot_submitter_id1 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
+        assert aliquot_submitter_id1 is not None, "no tumor sample in pair"
 
         data2 = meta_retriever.get_metadata(uuid2)
         samples_list2 = data2['cases'][0]['samples']
         for s in samples_list2:
-            if "Tumor" in s['sample_type']:
-                submitter_id2 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
+            sample_type = SAMPLE_TYPE.getTumorNormalClassification(s['sample_type_id'])
+            if sample_type == SAMPLE_TYPE.TUMOR:
+                aliquot_submitter_id2 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
+        assert (aliquot_submitter_id2 is not None), "no tumor sample in pair"
     
-    # Non VCF files can be associated with either multiple cases or just one. Files that are associated with multiple cases will get special treatment.
+    # Here we handle other file types that are associated with single sample, or multiple cases. 
+    # Files that are associated with multiple cases won't use information encoded in aliquot barcode
     else:
-        file_fields = "cases.project.program.name,created_datetime,updated_datetime,cases.samples.portions.analytes.aliquots.submitter_id"
+        file_fields = "cases.project.program.name,cases.samples.portions.analytes.aliquots.submitter_id"
         meta_retriever = MetadataRetriever(gdc_api_root, file_fields)
 
         data1 = meta_retriever.get_metadata(uuid1)
@@ -418,39 +430,37 @@ def _resolve_collision(gdc_api_root, uuid1, name1, uuid2, name2):
 
         # Take care of the case that at least one of the files is associated with more than one case.
         if num_cases1 > 1 or num_cases2 > 1:
+            print("number of cases...")
+            print("{0}: {1}, {2}: {3}".format(uuid1,num_cases1,uuid2,num_cases2))
             # If one of the two files has more cases associated with it, we assume it's the correct file to pick.
-            if num_cases1 > num_cases2:
+            if num_cases1 >= num_cases2:
                 return uuid1, name1
-            elif num_cases2 > num_cases1:
-                return uuid2, name2
-            #if both files have the same number of cases we'll pick the one that was submitted later.
             else:
-                if data1['created_datetime'] >= data2['created_datetime']:
-                    return uuid1, name1
-                else:
-                    return uuid2, name2
+                return uuid2, name2
         
-        # Both files are associated with only one case.
+        # Both files are associated with only one case and one sample
         else:
-            submitter_id1 = data1['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
-            submitter_id2 = data2['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
+            assert len(data1['cases'][0]['samples']) == 1, "more than one sample associated with file"
+            assert len(data2['cases'][0]['samples']) == 1, "more than one sample associated with file"
+            aliquot_submitter_id1 = data1['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
+            aliquot_submitter_id2 = data2['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
 
-    # At this point we've already taken care of files that were associated with multiple cases and are now left with single-case files.
-    print("new submitter is: {0}".format(submitter_id1))
-    print("old submitter is: {0}".format(submitter_id2))
+    # At this point we've already taken care of files that were associated with multiple cases and are now left with single-case files, 
+    # single-sample files
+    print("new aliquot submitter ID is: {0}".format(aliquot_submitter_id1))
+    print("old aliquot submitter ID is: {0}".format(aliquot_submitter_id2))
 
-    project1 = data1['cases'][0]['project']['program']['name']
-        
-    if project1 == "TCGA":
-        chosen = _pick_tcga_submitter(submitter_id1, submitter_id2)
+    program1 = data1['cases'][0]['project']['program']['name']
 
-    elif project1 == "TARGET":
-        chosen = _pick_target_submitter(submitter_id1, submitter_id2)
+    if program1 == "TCGA":
+        chosen = _pick_tcga_submitter(aliquot_submitter_id1, aliquot_submitter_id2)
 
+    elif program1 == "TARGET":
+        chosen = _pick_target_submitter(aliquot_submitter_id1, aliquot_submitter_id2)
     else:
-        raise "Unrecognized project name"
+        chosen = aliquot_submitter_id1
 
-    if chosen == submitter_id1:
+    if chosen == aliquot_submitter_id1:
         return uuid1, name1
     else:
         return uuid2, name2
@@ -481,25 +491,20 @@ def _add_file_attribute(gdc_api_root, entity, file_uuid, filename, file_url,
         basename = _constructAttributeName_base(experimental_strategy, workflow_type,
                                                 data_category, data_type)
         attribute_name = basename + UUID_ATTRIBUTE_SUFFIX
-        # CBB - check for multiple files mapped to same attribute
-        # The current logic has us overwrite earlier attribute values with later values
-        # so what ends up in the data model is the file listed last in the manifest.
-        # Let's first track how frequently this occurs and for what file types it occurs;
-        # then we can decide how to address it.  It may be that for each 
-        # file type there is a different prioritization rule, based on different
-        # file attributes (some of which we may not yet be pulling down from the GDC).
         
+        # see if attribute already defined for entity
         if attribute_name in entity:
             existing_file = entity[attribute_name]
             existing_uuid = existing_file.split("/")[0]
             existing_filename = existing_file.split("/")[1]
 
-            print("multiple files for same attirubte!") 
+            print("multiple files for same attribute!") 
             print("attribute name is {0}".format(attribute_name))
-            print("new filename: {0}/{1}".format(file_uuid, filename))
-            print("existing filename: {0}".format(entity[attribute_name]))
+            print("new file: {0}/{1}".format(file_uuid, filename))
+            print("existing file: {0}".format(entity[attribute_name]))
             
-            chosen_uuid, chosen_filename = _resolve_collision(gdc_api_root, file_uuid, filename, existing_uuid, existing_filename)
+            chosen_uuid, chosen_filename = _resolve_collision(gdc_api_root, data_category, data_type, 
+                                                              file_uuid, filename, existing_uuid, existing_filename)
             print("chosen file is: {0}/{1}".format(chosen_uuid, chosen_filename))
 
             if chosen_uuid == file_uuid:
@@ -525,7 +530,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
         data_type = responseDict['data_type']
         access = responseDict['access']
     except KeyError as x:
-        # we expect all files to have at least a data_category, data_type and access thype assigned them"
+        # we expect all files to have at least a data_category, data_type and access type assigned them"
         print("KeyError = ", x)
         print("SKIPPING FILE: file uuid = {0}, file name = {1}".format(file_uuid, filename))
         return
@@ -579,7 +584,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
             case_id = _add_to_knowncases(cases[0], known_cases)
             sample1_id, sample1_type_tn = _add_to_knownsamples(samples[0], case_id, known_samples)
             sample2_id, sample2_type_tn = _add_to_knownsamples(samples[1], case_id, known_samples)
-            assert sample1_type_tn != sample2_type_tn
+            assert sample1_type_tn != sample2_type_tn, "not tumor/normal pair"
             if sample1_type_tn == SAMPLE_TYPE.TUMOR:
                 tumor_sample_id = sample1_id
                 normal_sample_id = sample2_id
