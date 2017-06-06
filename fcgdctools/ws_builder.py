@@ -142,7 +142,7 @@ def main():
     
     #Step 3:
     #Run fcgdctools on the manifest file
-    fcgdctools_command = "python3 ~/Projects/fcgdctools/fcgdctools/fc_loadfiles.py " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    fcgdctools_command = "genFcWsLoadFiles " + manifest_filename + ">genFcWsLoadFiles_output.txt"
     print("Executing command {0}\nPlease check the output file to see progress and check for errors.".format(fcgdctools_command))
     os.system(fcgdctools_command)
     

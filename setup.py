@@ -9,7 +9,7 @@ from setuptools import setup, find_packages
 setup(
     name = 'fcgdctools',
     packages = ['fcgdctools'],
-    version = '0.1.10',
+    version = '0.1.11',
     description = 'Utilities for integrating FireCloud and GDC',
     author = 'Chet Birger',
     author_email = 'birger@broadinstitute.org',
