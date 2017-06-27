@@ -9,9 +9,11 @@ from manifest_downloader import build_filter_json, download_manifest
 
 FILE_TYPE_DICT = {
 	"default": ["open"],
-	"dbGapAuthorizedUsers": ["open", "controlled"]
+	"TCGA-dbGaP-Authorized": ["open", "controlled"]
 
 }
+
+TCGA_AUTH_DOMAIN_NAME = "TCGA-dbGaP-Authorized"
 
 def prepare_workspace_attribute_list(attr_file, auth_domain):
 	fp = open(attr_file, 'r')
@@ -21,7 +23,7 @@ def prepare_workspace_attribute_list(attr_file, auth_domain):
 	for i in range(len(attr_names)):
 		attrs[attr_names[i]] = attr_values[i]
 
-	if auth_domain == "dbGapAuthorizedUsers":
+	if auth_domain == TCGA_AUTH_DOMAIN_NAME:
 		attrs["token_file"] = "file_path_for_gdc_token_file"
 
 	return attrs
@@ -84,7 +86,7 @@ def create_method_configs(project, ws_name, attr_list, auth_domain):
 			inputs = current_config['inputs']
 			outputs = current_config['outputs']
 
-			if auth_domain != "dbGapAuthorizedUsers":
+			if auth_domain != TCGA_AUTH_DOMAIN_NAME:
 				inputs.pop('gdc_file_downloader_workflow.gdc_file_downloader.gdc_user_token', None)
 				
 			inputs['gdc_file_downloader_workflow.uuid_and_filename'] = "this.{0}".format(attr_name)
@@ -105,7 +107,7 @@ def main():
     parser.add_argument("cohort_name", help="name_of_cancer_cohort. e.g: LUAD")
     parser.add_argument("billing_project", help="name of billing project to create the workspace under. e.g: broad-firecloud-tcga")
     parser.add_argument("ws_suffix", help="descriptive suffix to add to the workspace auto-generated name. e.g: ControlledAccess_hg38_V1-0_DATA")
-    parser.add_argument("-a", "--auth_domain", help="authorization domain. for dbGaP controlled access the domain name is dbGapAuthorizedUsers.", default="")
+    parser.add_argument("-a", "--auth_domain", help="authorization domain. for dbGaP controlled access the domain name is TCGA-dbGaP-Authorized.", default="")
     
     args = parser.parse_args()
 
@@ -133,6 +135,9 @@ def main():
     filters["cases.project.program.name"] = [args.project_name]
     filters["cases.project.project_id"] = [args.project_name+"-"+args.cohort_name]
     filters["files.access"] = file_types
+    #Following directions from the GDC, we were told that controlled access workspaces should not contain BAM files
+    if args.auth_domain:
+    	filters["files.data_format"] = ["BCR XML","TXT","VCF","TSV","MAF"]
 
     filt_json = build_filter_json(filters)
 

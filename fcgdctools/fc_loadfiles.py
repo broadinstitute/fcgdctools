@@ -222,7 +222,7 @@ class MetadataRetriever():
 
     def get_metadata(self, file_uuid):
         url = "{0}/files/{1}?fields={2}".format(self.gdc_api_root, file_uuid, self.fields)
-        response = requests.get(url, headers=None)
+        response = requests.get(url, headers=None, timeout=5)
         responseDict = response.json()
         return responseDict['data']
 
@@ -845,7 +845,7 @@ def main():
             except Exception as x:
                 print("Exception=", x)
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
-                time.sleep(5)
+                time.sleep((attempt+1)**2)
         else:
             #failed all attempts
             # - just move on
@@ -864,7 +864,7 @@ def main():
             except Exception as x:
                 print("Exception=", x)
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
-                time.sleep(5)
+                time.sleep((attempt+1)**2)
                 raise
             else:
                 break
