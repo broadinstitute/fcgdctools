@@ -608,8 +608,11 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
 # may eventually drop this and incorporate into get_file_metadata.  Wasn't sure what to do with files
 # associated with multiple cases or files associated with samples across multiple cases.
 # For now we only include files in data model if they are associated with cases and samples that were
-# pulled in from other files in manifest that were associated with single cases.
-def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, known_cases, known_samples):
+# pulled in from other files in manifest that were associated with single cases; this behavior, however, 
+# can be overridden by setting all_cases to true, in which case a paricipant entity will be created for each
+# case a file is associated with.
+
+def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, known_cases, known_samples, all_cases):
     
     # get data file's name, category, type, access, format experimental strategy, workflow type
     fileMetadataRetriever = FileMetadataRetriever(gdc_api_root)
@@ -646,7 +649,7 @@ def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, know
 
     for case in cases:
         case_id = case['case_id']
-        if case_id in known_cases:
+        if all_cases or case_id in known_cases:
             case_id = _add_to_knowncases(case, known_cases)
             if 'samples' in case:
                 # associated with samples
@@ -806,6 +809,7 @@ def main():
     parser.add_argument("manifest", help="manifest file from the GDC Data Portal")
     parser.add_argument("-r", "--resolve_uuids", help="TSV file mapping GDC UUIDs to URLs")
     parser.add_argument("-l", "--legacy", help="point to GDC Legacy Archive", action="store_true")
+    parser.add_argument("-c", "--all_cases", help="create participant entities for all referenced cases", action="store_true")
     args = parser.parse_args()
 
     print("manifestFile = {0}".format(args.manifest))
@@ -858,7 +862,7 @@ def main():
 
         for attempt in range(5):
             try:
-                process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, cases, samples)
+                process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, cases, samples, args.all_cases)
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as x:
