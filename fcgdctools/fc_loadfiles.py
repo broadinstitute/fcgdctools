@@ -14,6 +14,9 @@ import time
 
 from fcgdctools import gdc_uuidresolver 
 
+
+DEFERRED_FILE_NUM_OF_CASES = dict()
+
 GDC_API_ROOT = "https://gdc-api.nci.nih.gov"
 GDC_LEGACY_API_ROOT = "https://gdc-api.nci.nih.gov/legacy"
 
@@ -378,8 +381,42 @@ def _pick_tcga_submitter(a, b):
         return a if a >= b else b
 
 def _pick_target_submitter(a,b):
-    # TODO: implement this after implementation method is decided.
-    return a
+    # Get the analytes and plates
+    # TARGET-##-TSS-ABCDEF-TS.TP.N-<portion><analyte>
+
+    analyte1 = a[-1]
+    analyte2 = b[-1]
+    portion1 = a[-3:-1]
+    portion2 = b[-3:-1]
+
+    # Equals case
+    if a == b:
+        return a
+    elif analyte1 == analyte2:
+        # Prefer the aliquot with the higher portion value
+        return a if portion1 >= portion2 else b
+    #If RNA then analyte codes can be only R or S
+    elif analyte1 == "S": 
+        #Then analyte2 has to be R (because they can't be equal)
+        return b
+    elif analyte1 == "R": 
+        #Then analyte2 has to be S (because they can't be equal)
+        return a
+    elif analyte1 == "D":
+        #prefer D to E,W,X,Y
+        return a
+    elif analyte1 == "E":
+        return b if analyte2 == "D" else a
+    elif analyte1 == "W":
+        # "W" is the lowest priority
+        return b
+    elif analyte1 == "X":
+        return a if analyte2 == "W" else b
+    else:
+        # analyte1 is Y
+        return a if analyte2 == "X" or analyte2 == "W" else b
+
+    
 
 
 def _resolve_collision(gdc_api_root, data_category, data_type, uuid1, name1, uuid2, name2):
@@ -389,6 +426,30 @@ def _resolve_collision(gdc_api_root, data_category, data_type, uuid1, name1, uui
     # two files.
 
 
+    # First, let's take care of the case that at least one of the files is a deferred file and is associated with more than one case
+    # Files that are associated with multiple cases won't use information encoded in aliquot barcode, 
+    # but instead we'll just pick the file that is associated with more cases.
+    if uuid1 in DEFERRED_FILE_NUM_OF_CASES or uuid2 in DEFERRED_FILE_NUM_OF_CASES:
+        if uuid1 in DEFERRED_FILE_NUM_OF_CASES:
+            num_cases1 = DEFERRED_FILE_NUM_OF_CASES[uuid1]
+        else:
+            num_cases1 = 1
+
+        if uuid2 in DEFERRED_FILE_NUM_OF_CASES:
+            num_cases2 = DEFERRED_FILE_NUM_OF_CASES[uuid2]
+        else:
+            num_cases2 = 1
+
+        print("number of cases...")
+        print("{0}: {1}, {2}: {3}".format(uuid1,num_cases1,uuid2,num_cases2))
+        # If one of the two files has more cases associated with it, we assume it's the correct file to pick.
+        if num_cases1 >= num_cases2:
+            return uuid1, name1
+        else:
+            return uuid2, name2
+
+
+    # Now we are left to deal only with files that are associated with one case
     # get aliquot submitter IDs
     aliquot_submitter_id1 = None
     aliquot_submitter_id2 = None
@@ -416,8 +477,7 @@ def _resolve_collision(gdc_api_root, data_category, data_type, uuid1, name1, uui
                 aliquot_submitter_id2 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
         assert (aliquot_submitter_id2 is not None), "no tumor sample in pair"
     
-    # Here we handle other file types that are associated with single sample, or multiple cases. 
-    # Files that are associated with multiple cases won't use information encoded in aliquot barcode
+    # Here we handle other file types that are associated with single sample.
     else:
         file_fields = "cases.project.program.name,cases.samples.portions.analytes.aliquots.submitter_id"
         meta_retriever = MetadataRetriever(gdc_api_root, file_fields)
@@ -425,27 +485,12 @@ def _resolve_collision(gdc_api_root, data_category, data_type, uuid1, name1, uui
         data1 = meta_retriever.get_metadata(uuid1)
         data2 = meta_retriever.get_metadata(uuid2)
 
-        num_cases1 = len(data1['cases'])
-        num_cases2 = len(data2['cases'])
+        assert len(data1['cases'][0]['samples']) == 1, "more than one sample associated with file"
+        assert len(data2['cases'][0]['samples']) == 1, "more than one sample associated with file"
+        aliquot_submitter_id1 = data1['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
+        aliquot_submitter_id2 = data2['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
 
-        # Take care of the case that at least one of the files is associated with more than one case.
-        if num_cases1 > 1 or num_cases2 > 1:
-            print("number of cases...")
-            print("{0}: {1}, {2}: {3}".format(uuid1,num_cases1,uuid2,num_cases2))
-            # If one of the two files has more cases associated with it, we assume it's the correct file to pick.
-            if num_cases1 >= num_cases2:
-                return uuid1, name1
-            else:
-                return uuid2, name2
-        
-        # Both files are associated with only one case and one sample
-        else:
-            assert len(data1['cases'][0]['samples']) == 1, "more than one sample associated with file"
-            assert len(data2['cases'][0]['samples']) == 1, "more than one sample associated with file"
-            aliquot_submitter_id1 = data1['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
-            aliquot_submitter_id2 = data2['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
-
-    # At this point we've already taken care of files that were associated with multiple cases and are now left with single-case files, 
+    
     # single-sample files
     print("new aliquot submitter ID is: {0}".format(aliquot_submitter_id1))
     print("old aliquot submitter ID is: {0}".format(aliquot_submitter_id2))
@@ -603,6 +648,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
     else:
         # file associated with multiple cases
         # we will record file_uuid and deal with later
+        DEFERRED_FILE_NUM_OF_CASES[file_uuid] = num_associated_cases
         deferred_file_uuids.append([file_uuid, filename])
 
 # may eventually drop this and incorporate into get_file_metadata.  Wasn't sure what to do with files
@@ -855,9 +901,13 @@ def main():
             # - just move on
             print("failed 5 attempts! SKIPPING FILE: file uuid = ", file_uuid)
 
+
+    print("deferred files exist. The uuids are:")
+    print(deferred_file_uuids)
     for uuid_and_filename in deferred_file_uuids:
         file_uuid = uuid_and_filename[0]
         filename = uuid_and_filename[1]
+        print("Dealing with file: {0}".format(file_uuid))
         file_url =  file_url = uuidResolver.getURL(file_uuid) if uuidResolver is not None else "__DELETE__"
 
         for attempt in range(5):
@@ -869,7 +919,6 @@ def main():
                 print("Exception=", x)
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
                 time.sleep((attempt+1)**2)
-                raise
             else:
                 break
         else:

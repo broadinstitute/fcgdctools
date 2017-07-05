@@ -9,11 +9,13 @@ from manifest_downloader import build_filter_json, download_manifest
 
 FILE_TYPE_DICT = {
 	"default": ["open"],
-	"TCGA-dbGaP-Authorized": ["open", "controlled"]
+	"TCGA-dbGaP-Authorized": ["open", "controlled"],
+	"TARGET-dbGaP-Authorized": ["open", "controlled"]
 
 }
 
 TCGA_AUTH_DOMAIN_NAME = "TCGA-dbGaP-Authorized"
+TARGET_AUTH_DOMAIN_NAME = "TARGET-dbGaP-Authorized"
 
 def prepare_workspace_attribute_list(attr_file, auth_domain):
 	fp = open(attr_file, 'r')
@@ -23,7 +25,7 @@ def prepare_workspace_attribute_list(attr_file, auth_domain):
 	for i in range(len(attr_names)):
 		attrs[attr_names[i]] = attr_values[i]
 
-	if auth_domain == TCGA_AUTH_DOMAIN_NAME:
+	if auth_domain:
 		attrs["token_file"] = "file_path_for_gdc_token_file"
 
 	return attrs
@@ -42,7 +44,7 @@ def list_downloadable_attrs(prefix, entities):
 	return downloadable_attr_names
 
 
-def create_method_configs(project, ws_name, attr_list, auth_domain):
+def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 
 	config_namespace = "broadinstitute_cga"
 	file_downloader_name = "gdc_file_downloader__default_cfg"
@@ -56,9 +58,9 @@ def create_method_configs(project, ws_name, attr_list, auth_domain):
 		if "aligned_reads" in attr_name:
 			new_config_name = "gdc_bam_downloader__" + attr_name[:-17] + "cfg"
 			print("Uploading and configuring method config {0}, based on {1}".format(new_config_name, bam_downloader_name))
-			api.copy_config_from_repo(project, ws_name, config_namespace, bam_downloader_name, snapshot_id, config_namespace, new_config_name)
+			api.copy_config_from_repo(billing_project, ws_name, config_namespace, bam_downloader_name, snapshot_id, config_namespace, new_config_name)
 			
-			current_config = api.get_workspace_config(project, ws_name, config_namespace, new_config_name)
+			current_config = api.get_workspace_config(billing_project, ws_name, config_namespace, new_config_name)
 			current_config = current_config.json()
 
 			inputs = current_config['inputs']
@@ -73,20 +75,20 @@ def create_method_configs(project, ws_name, attr_list, auth_domain):
 			current_config['outputs'] = outputs
 			current_config['rootEntityType'] = attr_entity
 			
-			api.update_workspace_config(project, ws_name, config_namespace, new_config_name, current_config)
+			api.update_workspace_config(billing_project, ws_name, config_namespace, new_config_name, current_config)
 
 		else:
 			new_config_name = "gdc_file_downloader__" + attr_name[:-17] + "cfg"
 			print("Uploading and configuring method config {0}, based on {1}".format(new_config_name, file_downloader_name))
-			api.copy_config_from_repo(project, ws_name, config_namespace, file_downloader_name, snapshot_id, config_namespace, new_config_name)
+			api.copy_config_from_repo(billing_project, ws_name, config_namespace, file_downloader_name, snapshot_id, config_namespace, new_config_name)
 			
-			current_config = api.get_workspace_config(project, ws_name, config_namespace, new_config_name)
+			current_config = api.get_workspace_config(billing_project, ws_name, config_namespace, new_config_name)
 			current_config = current_config.json()
 
 			inputs = current_config['inputs']
 			outputs = current_config['outputs']
 
-			if auth_domain != TCGA_AUTH_DOMAIN_NAME:
+			if not auth_domain:
 				inputs.pop('gdc_file_downloader_workflow.gdc_file_downloader.gdc_user_token', None)
 				
 			inputs['gdc_file_downloader_workflow.uuid_and_filename'] = "this.{0}".format(attr_name)
@@ -97,7 +99,7 @@ def create_method_configs(project, ws_name, attr_list, auth_domain):
 			current_config['outputs'] = outputs
 			current_config['rootEntityType'] = attr_entity
 
-			api.update_workspace_config(project, ws_name, config_namespace, new_config_name, current_config)
+			api.update_workspace_config(billing_project, ws_name, config_namespace, new_config_name, current_config)
 			
 
 def main():
@@ -137,7 +139,7 @@ def main():
     filters["files.access"] = file_types
     #Following directions from the GDC, we were told that controlled access workspaces should not contain BAM files
     if args.auth_domain:
-    	filters["files.data_format"] = ["BCR XML","TXT","VCF","TSV","MAF"]
+    	filters["files.data_format"] = ["BCR XML","TXT","VCF","TSV","MAF","XLSX"]
 
     filt_json = build_filter_json(filters)
 
@@ -147,7 +149,11 @@ def main():
     
     #Step 3:
     #Run fcgdctools on the manifest file
-    fcgdctools_command = "genFcWsLoadFiles " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    if args.project_name == "TARGET":
+    	fcgdctools_command = "python3 ~/Projects/fcgdctools/fcgdctools/fc_loadfiles.py -c " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    else:
+    	fcgdctools_command = "python3 ~/Projects/fcgdctools/fcgdctools/fc_loadfiles.py " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+
     print("Executing command {0}\nPlease check the output file to see progress and check for errors.".format(fcgdctools_command))
     os.system(fcgdctools_command)
     
