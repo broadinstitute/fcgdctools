@@ -109,6 +109,7 @@ def main():
     parser.add_argument("cohort_name", help="name_of_cancer_cohort. e.g: LUAD")
     parser.add_argument("billing_project", help="name of billing project to create the workspace under. e.g: broad-firecloud-tcga")
     parser.add_argument("ws_suffix", help="descriptive suffix to add to the workspace auto-generated name. e.g: ControlledAccess_hg38_V1-0_DATA")
+    parser.add_argument("-l", "--legacy", help="point to GDC Legacy Archive", action="store_true")
     parser.add_argument("-a", "--auth_domain", help="authorization domain. for dbGaP controlled access the domain name is TCGA-dbGaP-Authorized.", default="")
     
     args = parser.parse_args()
@@ -144,15 +145,21 @@ def main():
     filt_json = build_filter_json(filters)
 
     #Download manifest file to the new directory
-    manifest_filename = download_manifest(filt_json)
+    manifest_filename = download_manifest(filt_json, args.legacy)
     print("manifest downloaded")
     
     #Step 3:
     #Run fcgdctools on the manifest file
     if args.project_name == "TARGET":
-    	fcgdctools_command = "python3 ~/Projects/fcgdctools/fcgdctools/fc_loadfiles.py -c " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    	if args.legacy:
+    		fcgdctools_command = "genFcWsLoadFiles -c -l " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    	else:
+    		fcgdctools_command = "genFcWsLoadFiles -c " + manifest_filename + ">genFcWsLoadFiles_output.txt"
     else:
-    	fcgdctools_command = "python3 ~/Projects/fcgdctools/fcgdctools/fc_loadfiles.py " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    	if args.legacy:
+    		fcgdctools_command = "genFcWsLoadFiles -l " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    	else:
+    		fcgdctools_command = "genFcWsLoadFiles " + manifest_filename + ">genFcWsLoadFiles_output.txt"
 
     print("Executing command {0}\nPlease check the output file to see progress and check for errors.".format(fcgdctools_command))
     os.system(fcgdctools_command)
