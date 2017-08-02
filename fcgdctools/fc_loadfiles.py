@@ -258,7 +258,7 @@ def _read_manifestFile(manifestFile):
 
     with open(manifestFile, 'r') as fp:
         reader = csv.DictReader(fp, delimiter='\t')
-        print(reader.fieldnames)
+        #print(reader.fieldnames)
         for row in reader:
             manifestFileList.append(row)
     
@@ -859,7 +859,7 @@ def main():
     args = parser.parse_args()
 
     print("manifestFile = {0}".format(args.manifest))
-    print("tsvFile = {0}".format(args.resolve_uuids))
+    print("resolverTsvFile = {0}".format(args.resolve_uuids))
 
     manifestFile = args.manifest
     uuidResolver = None
@@ -902,12 +902,12 @@ def main():
             print("failed 5 attempts! SKIPPING FILE: file uuid = ", file_uuid)
 
 
-    print("deferred files exist. The uuids are:")
-    print(deferred_file_uuids)
+    print("Processing deferred files...")
+    #print(deferred_file_uuids)
     for uuid_and_filename in deferred_file_uuids:
         file_uuid = uuid_and_filename[0]
         filename = uuid_and_filename[1]
-        print("Dealing with file: {0}".format(file_uuid))
+        print("{0}, {1} ".format(file_uuid, filename))
         file_url =  file_url = uuidResolver.getURL(file_uuid) if uuidResolver is not None else "__DELETE__"
 
         for attempt in range(5):

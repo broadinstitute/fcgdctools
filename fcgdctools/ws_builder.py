@@ -54,9 +54,10 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 	for attr in attr_list:
 		
 		attr_name = attr[0]
+		attr_name_base = attr_name[:-17]
 		attr_entity = attr[1]
 		if "aligned_reads" in attr_name:
-			new_config_name = "gdc_bam_downloader__" + attr_name[:-17] + "cfg"
+			new_config_name = "gdc_bam_downloader__" + attr_name_base + "cfg"
 			print("Uploading and configuring method config {0}, based on {1}".format(new_config_name, bam_downloader_name))
 			api.copy_config_from_repo(billing_project, ws_name, config_namespace, bam_downloader_name, snapshot_id, config_namespace, new_config_name)
 			
@@ -68,8 +69,8 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 
 			inputs['gdc_bam_downloader_workflow.uuid_and_filename'] = "this.{0}".format(attr_name)
 			
-			outputs['gdc_bam_downloader_workflow.gdc_bam_downloader.bam_file'] = "this.{0}__bam_url".format(attr_name)
-			outputs['gdc_bam_downloader_workflow.gdc_bam_downloader.bai_file'] = "this.{0}__bai_url".format(attr_name)
+			outputs['gdc_bam_downloader_workflow.gdc_bam_downloader.bam_file'] = "this.{0}__bam_url".format(attr_name_base)
+			outputs['gdc_bam_downloader_workflow.gdc_bam_downloader.bai_file'] = "this.{0}__bai_url".format(attr_name_base)
 
 			current_config['inputs'] = inputs
 			current_config['outputs'] = outputs
@@ -78,7 +79,7 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 			api.update_workspace_config(billing_project, ws_name, config_namespace, new_config_name, current_config)
 
 		else:
-			new_config_name = "gdc_file_downloader__" + attr_name[:-17] + "cfg"
+			new_config_name = "gdc_file_downloader__" + attr_name_base + "cfg"
 			print("Uploading and configuring method config {0}, based on {1}".format(new_config_name, file_downloader_name))
 			api.copy_config_from_repo(billing_project, ws_name, config_namespace, file_downloader_name, snapshot_id, config_namespace, new_config_name)
 			
@@ -93,7 +94,7 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 				
 			inputs['gdc_file_downloader_workflow.uuid_and_filename'] = "this.{0}".format(attr_name)
 			
-			outputs['gdc_file_downloader_workflow.gdc_file_downloader.file'] = "this.{0}__url".format(attr_name)
+			outputs['gdc_file_downloader_workflow.gdc_file_downloader.file'] = "this.{0}__url".format(attr_name_base)
 			
 			current_config['inputs'] = inputs
 			current_config['outputs'] = outputs
