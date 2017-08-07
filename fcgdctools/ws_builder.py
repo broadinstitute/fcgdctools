@@ -69,8 +69,8 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 
 			inputs['gdc_bam_downloader_workflow.uuid_and_filename'] = "this.{0}".format(attr_name)
 			
-			outputs['gdc_bam_downloader_workflow.gdc_bam_downloader.bam_file'] = "this.{0}__bam_url".format(attr_name_base)
-			outputs['gdc_bam_downloader_workflow.gdc_bam_downloader.bai_file'] = "this.{0}__bai_url".format(attr_name_base)
+			outputs['gdc_bam_downloader_workflow.gdc_bam_downloader.bam_file'] = "this.{0}bam_url".format(attr_name_base)
+			outputs['gdc_bam_downloader_workflow.gdc_bam_downloader.bai_file'] = "this.{0}bai_url".format(attr_name_base)
 
 			current_config['inputs'] = inputs
 			current_config['outputs'] = outputs
@@ -94,7 +94,7 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 				
 			inputs['gdc_file_downloader_workflow.uuid_and_filename'] = "this.{0}".format(attr_name)
 			
-			outputs['gdc_file_downloader_workflow.gdc_file_downloader.file'] = "this.{0}__url".format(attr_name_base)
+			outputs['gdc_file_downloader_workflow.gdc_file_downloader.file'] = "this.{0}url".format(attr_name_base)
 			
 			current_config['inputs'] = inputs
 			current_config['outputs'] = outputs
@@ -187,13 +187,11 @@ def main():
     		api.upload_entities_tsv(args.billing_project, workspace_name, full_name)
 
     #Step 7:
-    #Upload method configurations for downloading files to the new workspace
+    #Create and Upload method configurations for downloading files to the new workspace
     downloadable_attrs = list_downloadable_attrs(data_model_file_prefix, ["participant", "sample", "pair"])
     print("The downloadable attributes are:")
     for attr in downloadable_attrs:
     	print(attr[0])
-
-    #Step 8:
     create_method_configs(args.billing_project, workspace_name, downloadable_attrs, args.auth_domain)
 
 if __name__ == '__main__':
