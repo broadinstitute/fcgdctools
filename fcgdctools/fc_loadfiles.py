@@ -1,4 +1,3 @@
-
 import csv
 import requests
 import argparse
@@ -550,12 +549,6 @@ def _add_file_attribute(gdc_api_root, entity, file_uuid, filename, file_url,
             entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
             entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url
 
-def special_case_filter(file_uuid, filename, data_category, data_type, access, program):
-    if program == GDC_ProgramName.TARGET and data_category == GDC_DataCategory.BIOSPECIMEN:
-        if "InductionFailure" in filename:
-            return "TARGET biospecimen filename contains \"InductionFailure\""
-    return None
-
 def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, known_samples, known_pairs, deferred_file_uuids):
     
     # get from GDC the data file's category, type, access type, format, experimental strategy,
@@ -574,12 +567,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
         print("SKIPPING FILE: file uuid = {0}, file name = {1}".format(file_uuid, filename))
         return
     
-    # some special-case filtering
-    skip_reason = special_case_filter(file_uuid, filename, data_category, data_type, access, program)
-    if skip_reason != None:
-        print("SKIPPING FILE: file uuid = {0}, file name = {1}, reason = {2}".format(file_uuid, filename, skip_reason))
-        return
-        
+          
     if 'experimental_strategy' in responseDict:
         experimental_strategy = responseDict['experimental_strategy']
     else: 
