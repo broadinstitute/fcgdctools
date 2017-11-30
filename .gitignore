@@ -92,5 +92,6 @@ ENV/
 *~
 
 # Ignore some files in test directory
-fcgdctools/test/*.txt
-fcgdctools/test/*.db
+fcgdctools/test
+
+.DS_store

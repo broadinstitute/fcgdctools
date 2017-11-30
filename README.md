@@ -6,41 +6,45 @@ A python project containing utilities to support intereoperability between FireC
 fcgdctools requires: 
 
 * python 3 
-* python 3 `requests` package.  Install command: `pip3 install requests` 
+* python 3 `requests` package.  Install command: `pip install requests` 
 
 
 ## Installation
 
-To get started, from a command line terminal clone the repo, build, and install:
+Install this package via pip:
+
+```
+	% pip install fcgdctools
+```
+
+Or download the source and install with setup.py:
 
 ```
 	% git clone https://github.com/broadinstitute/fcgdctools.git
 	% cd fcgdctools
-	% python3 setup.py build
-	% python3 setup.py install
+	% python setup.py build
+	% python setup.py install
 ```
-Note that if you are installing to a protected location, you may need to preface the `python3 setup.py install` command with `sudo`.  
-
-We plan on making fcgdctools installable via pip3 (from [PyPI](https://pypi.python.org/pypi)), and will update these instructions when the fcgdctools package is submitted to the PyPI repository.
+Note that if you are installing to a protected location, you may need to preface the `python setup.py install` command with `sudo`.  
 
 ## Description
 Following installation you should be able to run the `genFcWsLoadFiles` command from the command line
 
 ```
-	% cd
 	% genFcWsLoadFiles -h
-	usage: genFcWsLoadFiles [-h] [-r RESOLVE_UUIDS] [-l] manifest
+	usage: genFcWsLoadFiles [-h] [-r RESOLVE_UUIDS] [-l] [-c] manifest
 
 	create FireCloud workspace load files from GDC manifest
 
 	positional arguments:
-  	manifest                manifest file from the GDC Data Portal
+	  manifest              manifest file from the GDC Data Portal
 
 	optional arguments:
-  	  -h, --help            show this help message and exit
-  	  -r RESOLVE_UUIDS, --resolve_uuids RESOLVE_UUIDS
-                            resolve uuids in the manifest to urls
-  	  -l, --legacy          point to GDC Legacy Archive
+	  -h, --help            show this help message and exit
+	  -r RESOLVE_UUIDS, --resolve_uuids RESOLVE_UUIDS
+                        TSV file mapping GDC UUIDs to URLs
+	  -l, --legacy          point to GDC Legacy Archive
+	  -c, --all_cases       create participant entities for all referenced cases
   ```
 By default, the tool assumes the manifest references harmonized data from the GDC's principal portal.  For each file listed in the manifest, the tool queries the GDC for file metadata (e.g., the cases and samples it is associated with, the file's access status (open or controlled), data category and data type, etc.). After assembling the files' metadata, the tool creates FireCloud Workspace Load Files for populating a FireCloud workspace with participant, sample and pair entities containing attributes whose contents reference the listed files.  For each entity type, an attribute is defined for each type of file associated with that entity type.  Attribute names are derived as follows:
 
