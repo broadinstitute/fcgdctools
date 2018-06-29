@@ -33,8 +33,8 @@ class GDC_DataCategory:
     DNA_METHYLATION = "DNA Methylation"
     COMBINED_NUCLEOTIDE_VARIATION = "Combined Nucleotide Variation"
 
-    #legacy data categories                                                                                                        
-    RAW_MICROARRAY_DATA = "Raw microarray data"
+    #legacy archive data categories need to recognize
+    LEGACY_SNV = "Simple nucleotide variation"
 
 #data types                                                                                                                        
 class GDC_DataType:
@@ -75,6 +75,9 @@ class GDC_DataType:
     
     #associated with Combined Nucleotide Variation data category
     RAW_CGI_VARIANT = "Raw CGI Variant"
+
+    #legacy archive data types need to recognize
+    LEGACY_SIMPLE_NUCLEOTIDE_VARIATION = "Simple nucleotide variation"
 
 #access category                                                                                                                   
 class GDC_FileAccessType:
@@ -142,33 +145,6 @@ PLATFORM_ABBREVIATIONS = {
         'Illumina Human Methylation 27' : 'IllumHuMeth27'}
 
 PLATFORM = DataSource(PLATFORM_ABBREVIATIONS)
-
-class GDC_FileAccess:
-
-    def __init__(self):
-
-        self.accessTypePrefix = {
-            GDC_FileAccessType.OPEN : 'OA__',
-            GDC_FileAccessType.CONTROLLED : 'CA__'
-            }
-
-        self.gdcFileAccess = dict()
-
-
-    def recordFileAccessType(self, file_attribute_base_name, access_type):
-
-        assert access_type in [GDC_FileAccessType.OPEN, GDC_FileAccessType.CONTROLLED], "unexpected file access type"
-
-        if file_attribute_base_name in self.gdcFileAccess:
-            assert self.gdcFileAccess[file_attribute_base_name] == access_type, "inconsistent file access type"
-        else:
-            self.gdcFileAccess[file_attribute_base_name] = access_type
-
-    def getAccessTypePrefix(self, file_attribute_base_name):
-        assert file_attribute_base_name in self.gdcFileAccess, "file_attribute_base_name not in gdcFileAccess dict"
-        return self.accessTypePrefix[self.gdcFileAccess[file_attribute_base_name]]
-
-GDC_FILE_ACCESS = GDC_FileAccess()
 
 # Sample Types                                                                                                                     
 # from https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/sample-type-codes                                              
@@ -449,6 +425,7 @@ def _pick_tcga_aliquot_pair(aliquot_pair_1, aliquot_pair_2):
         normal_aliquot_choice = _pick_tcga_submitter(tumor_aliquot_1, tumor_aliquot_2)
         return aliquot_pair_1 if normal_aliquot_choice == normal_aliquot_1 else aliquot_pair_2
     else:
+        print("WARNING: aliquot ids are identical, unable to make rational choice")
         return aliquot_pair_1
 
 def _pick_target_submitter(a,b):
@@ -501,6 +478,7 @@ def _pick_target_aliquot_pair(aliquot_pair_1, aliquot_pair_2):
         normal_aliquot_choice = _pick_target_submitter(tumor_aliquot_1, tumor_aliquot_2)
         return aliquot_pair_1 if normal_aliquot_choice == normal_aliquot_1 else aliquot_pair_2
     else:
+        print("WARNING: aliquot ids are identical, unable to make rational choice")
         return aliquot_pair_1
 
 def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, name1, uuid2, name2):
@@ -554,7 +532,9 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
     # SNV and Combined Nucleotide Variation (TARGET only) files are associated with two samples: tumor and normal. 
     if ((data_category in GDC_DataCategory.SNV and 
          data_type not in set([GDC_DataType.AGGREGATED_SOMATIC_MUTATION, GDC_DataType.MASKED_SOMATIC_MUTATION])) or
-        (data_category in GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION)):
+        (data_category in GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION) or
+        (data_category in GDC_DataCategory.LEGACY_SNV and 
+         data_type in GDC_DataType.LEGACY_SIMPLE_NUCLEOTIDE_VARIATION)):
 
         file_fields = "cases.samples.sample_type,cases.samples.portions.analytes.aliquots.submitter_id,cases.samples.sample_type_id"
         meta_retriever = MetadataRetriever(gdc_api_root, file_fields)
@@ -593,6 +573,7 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
             chosen_aliquot_pair = _pick_target_aliquot_pair(aliquot_pair_1, aliquot_pair_2)
         else:
             # no known structure of metadata encoded in aliquot name; just choose 1 arbitrarily
+            print('WARNING: no known structure of metadata encoded in aliquote name; choice is arbitrary!')
             chosen_aliquot_pair = aliquot_pair_1
         
         if chosen_aliquot_pair == aliquot_pair_1:
@@ -617,12 +598,17 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
         print('aliquot name for {0}: {1}'.format(uuid1, aliquot_submitter_id1))
         print('aliquot name for {0}: {1}'.format(uuid2, aliquot_submitter_id2))
 
-        if program == GDC_ProgramName.TCGA:
-            chosen = _pick_tcga_aliquot(aliquot_submitter_id1, aliquot_submitter_id2)
+        if aliquot_submitter_id1 != aliquot_submitter_id2:
+            if program == GDC_ProgramName.TCGA:
+                chosen = _pick_tcga_submitter(aliquot_submitter_id1, aliquot_submitter_id2)
 
-        elif program == GDC_ProgramName.TARGET:
-            chosen = _pick_target_submitter(aliquot_submitter_id1, aliquot_submitter_id2)
+            elif program == GDC_ProgramName.TARGET:
+                chosen = _pick_target_submitter(aliquot_submitter_id1, aliquot_submitter_id2)
+            else:
+                print('WARNING: no known structure of metadata encoded in aliquote name; choice is arbitrary!')
+                chosen = aliquot_submitter_id1
         else:
+            print('WARNING: aliquot ids are identical; unable to make rational choice!')
             chosen = aliquot_submitter_id1
 
         if chosen == aliquot_submitter_id1:
@@ -631,7 +617,7 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
             return uuid2, name2
 
 
-def _add_file_attribute(gdc_api_root, entity, file_uuid, filename, file_url,
+def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename, file_url,
                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program):
     # I needed to insert some special-case processing for image data files
     # this probably isn't the cleanest way to handle it, but good enough for now
@@ -646,7 +632,7 @@ def _add_file_attribute(gdc_api_root, entity, file_uuid, filename, file_url,
             existing_filename = existing_file.split("/")[1]
 
             print("multiple files for same attribute!") 
-            print("attribute name is {0}".format(attribute_name))
+            print("entity id: {0}, attribute name: {1}".format(entity_id, attribute_name))
             print("new file: {0}/{1}".format(file_uuid, filename))
             print("existing file: {0}".format(entity[attribute_name]))
 
@@ -654,7 +640,6 @@ def _add_file_attribute(gdc_api_root, entity, file_uuid, filename, file_url,
             _, portion_present = _getImageCodeAndPortionFromImageFilename(filename_present)
             if portion > portion_present:
                 print("newer file has larger portion ID; use newer file")
-                GDC_FILE_ACCESS.recordFileAccessType(basename, access)
                 entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
                 entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url            
             elif portion < portion_present:
@@ -663,7 +648,6 @@ def _add_file_attribute(gdc_api_root, entity, file_uuid, filename, file_url,
                 print("Both files have samer portion ID: retain existing file")
 
         else:
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
             entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
             entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url            
     else:
@@ -673,12 +657,13 @@ def _add_file_attribute(gdc_api_root, entity, file_uuid, filename, file_url,
         
         # see if attribute already defined for entity
         if attribute_name in entity:
+            entity_id = entity['entity_id']
             existing_file = entity[attribute_name]
             existing_uuid = existing_file.split("/")[0]
             existing_filename = existing_file.split("/")[1]
 
-            print("multiple files for same attribute!") 
-            print("attribute name is {0}".format(attribute_name))
+            print("multiple files for same attribute!")
+            print("entity id: {0}, attribute name: {1}".format(entity_id, attribute_name))
             print("new file: {0}/{1}".format(file_uuid, filename))
             print("existing file: {0}".format(entity[attribute_name]))
             
@@ -687,13 +672,11 @@ def _add_file_attribute(gdc_api_root, entity, file_uuid, filename, file_url,
             print("chosen file is: {0}/{1}".format(chosen_uuid, chosen_filename))
 
             if chosen_uuid == file_uuid:
-                GDC_FILE_ACCESS.recordFileAccessType(basename, access)
                 entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
                 entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url
             else:
                 return
         else:
-            GDC_FILE_ACCESS.recordFileAccessType(basename, access)
             entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
             entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url
 
@@ -755,12 +738,12 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
     if num_associated_cases == 1:
         if num_associated_samples == 0:
             case_id = _add_to_knowncases(cases[0], known_cases)
-            _add_file_attribute(gdc_api_root, known_cases[case_id], file_uuid, filename, file_url,
+            _add_file_attribute(gdc_api_root, case_id, known_cases[case_id], file_uuid, filename, file_url,
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
         elif num_associated_samples == 1:
             case_id = _add_to_knowncases(cases[0], known_cases)
             sample_id, _ = _add_to_knownsamples(samples[0], case_id, known_samples)
-            _add_file_attribute(gdc_api_root, known_samples[sample_id], file_uuid, filename, file_url, 
+            _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename, file_url, 
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
         elif num_associated_samples == 2:
             case_id = _add_to_knowncases(cases[0], known_cases)
@@ -775,7 +758,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
                 normal_sample_id = sample1_id
 
             pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
-            _add_file_attribute(gdc_api_root, known_pairs[pair_id], file_uuid, filename, file_url,
+            _add_file_attribute(gdc_api_root, pair_id, known_pairs[pair_id], file_uuid, filename, file_url,
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
         else:
             # file associated with more than two samples from a single case
@@ -808,16 +791,16 @@ def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, know
     program = responseDict['cases'][0]['project']['program']['name']
 
     # I have decided to ignore (i.e., not incorporate into workspace) Clinical and Biospecimen files of data 
-    # format "BCR Biotab" and "XLSX"; these files are typically associated with multple cases, and there can be
+    # format "BCR Biotab"; these files are typically associated with multple cases, and there can be
     # multiple files that would map to the same attribute where all of the files are relevant; i.e., one doesn't 
     # replace another.  This doesn't fit into our data model.
     if data_category == GDC_DataCategory.BIOSPECIMEN and data_type == GDC_DataType.BIOSPECIMEN_SUPPLEMENT:
-        if data_format in ['BCR Biotab', 'XLSX']:
+        if data_format in ['BCR Biotab']:
             print('skipping {0} file {1}'.format(data_format, file_uuid))
             return
                   
     if data_category == GDC_DataCategory.CLINICAL and data_type == GDC_DataType.CLINICAL_SUPPLEMENT:
-        if data_format in ['BCR Biotab', 'XLSX']:
+        if data_format in ['BCR Biotab']:
             print('skipping {0} file {1}'.format(data_format, file_uuid))
             return
 
@@ -851,11 +834,11 @@ def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, know
                 for sample in samples:
                     sample_id = sample['sample_id']
                     if sample_id in known_samples:
-                        _add_file_attribute(gdc_api_root, known_samples[sample_id], file_uuid, filename, file_url,
+                        _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename, file_url,
                                             data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
             else:
                 # associated with multiple cases only
-                _add_file_attribute(gdc_api_root, known_cases[case_id], file_uuid, filename, file_url,
+                _add_file_attribute(gdc_api_root, case_id, known_cases[case_id], file_uuid, filename, file_url,
                                     data_category, data_type, data_format,experimental_strategy, workflow_type, access, program)
 
 
@@ -885,8 +868,8 @@ def create_participants_file(cases, manifestFileBasename):
                 if attribute_name in case:
                     entity_row[attribute_name] = case[attribute_name]
                     if attribute_name.endswith(UUID_ATTRIBUTE_SUFFIX):
-                        basename = attribute_name[0:-len(UUID_ATTRIBUTE_SUFFIX)]
-                        membership_row = {'membership:participant_set_id' : GDC_FILE_ACCESS.getAccessTypePrefix(basename) + basename,
+                        basename = attribute_name[0:-(len(UUID_ATTRIBUTE_SUFFIX)+2)]
+                        membership_row = {'membership:participant_set_id' : basename,
                                           'participant_id' : case_id}
                         membership_writer.writerow(membership_row)
                 else:
@@ -925,8 +908,8 @@ def create_samples_file(samples, manifestFileBasename):
                 if attribute_name in sample:
                     entity_row[attribute_name] = sample[attribute_name]
                     if attribute_name.endswith(UUID_ATTRIBUTE_SUFFIX):
-                        basename = attribute_name[0:-len(UUID_ATTRIBUTE_SUFFIX)]
-                        membership_row = {'membership:sample_set_id' : GDC_FILE_ACCESS.getAccessTypePrefix(basename) + basename,
+                        basename = attribute_name[0:-(len(UUID_ATTRIBUTE_SUFFIX)+2)]
+                        membership_row = {'membership:sample_set_id' : basename,
                                           'sample_id' : sample_id}
                         membership_writer.writerow(membership_row)
                 else:
@@ -973,8 +956,8 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
                 if attribute_name in pair:
                     entity_row[attribute_name] = pair[attribute_name]
                     if attribute_name.endswith(UUID_ATTRIBUTE_SUFFIX):
-                        basename = attribute_name[0:-len(UUID_ATTRIBUTE_SUFFIX)]
-                        membership_row = {'membership:pair_set_id' : GDC_FILE_ACCESS.getAccessTypePrefix(basename) + basename,
+                        basename = attribute_name[0:-(len(UUID_ATTRIBUTE_SUFFIX)+2)]
+                        membership_row = {'membership:pair_set_id' : basename,
                                           'pair_id': pair_id}
                         membership_writer.writerow(membership_row)
                 else:

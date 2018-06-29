@@ -46,20 +46,18 @@ Following installation you should be able to run the `genFcWsLoadFiles` command 
 	  -l, --legacy          point to GDC Legacy Archive
 	  -c, --all_cases       create participant entities for all referenced cases
   ```
-By default, the tool assumes the manifest references harmonized data from the GDC's principal portal.  For each file listed in the manifest, the tool queries the GDC for file metadata (e.g., the cases and samples it is associated with, the file's access status (open or controlled), data category and data type, etc.). After assembling the files' metadata, the tool creates FireCloud Workspace Load Files for populating a FireCloud workspace with participant, sample and pair entities containing attributes whose contents reference the listed files.  For each entity type, an attribute is defined for each type of file associated with that entity type.  Attribute names are derived as follows:
+By default, the tool assumes the manifest references harmonized data from the GDC's principal portal.  For each file listed in the manifest, the tool queries the GDC for file metadata (e.g., the cases and samples it is associated with, the file's data category, data type, etc.). After assembling the files' metadata, the tool creates FireCloud Workspace Load Files for populating a FireCloud workspace with participant, sample and pair entities containing attributes whose contents reference the listed files.  For each entity type, an attribute is defined for each type of file associated with that entity type.  Attribute names are derived as follows:
 
 ```
-    [<experimental strategy abbrev>__][<workflow type abbrev>__]<data type abbrev>__uuid_and_filename
+    [<experimental strategy abbrev>__][<workflow type abbrev>__]<data type abbrev>__<data format abbrev>__uuid_and_filename
 ```
 Here are some examples of attribute names:
 
 ```
-    biospecimen_data__uuid_and_name
-    miRNAseq__BCGSC__isoform_expression_quantification__uuid_and_filename
-    RNA_seq__STAR2Pass__aligned_reads__uuid_and_filename
-    WXS__BWAMDupCoClean__aligned_reads__uuid_filename
-    WXS__MuTect2__raw_simple_somatic_mutation__uuid_and_filename
-    
+    biospecimen_supplement__bcr_ssf_xml__uuid_and_filename
+    WXS__BWAMDupCoClean__aligned_reads__bam__uuid_filename
+    RNAseq__STAR2Pass__aligned_reads__bam__uuid_and_filename
+    WXS__MuTect2__annotated_simple_somatic_mutation__vcf__uuid_and_filename
 ```
 
 Attribute values are file references, consisting of a concatenation a uuid and filename:
@@ -71,33 +69,32 @@ Attribute values are file references, consisting of a concatenation a uuid and f
 Here are some examples of attribute values corresponding to the above attribute names:
 
 ```
-    40a28c9d-317d-4589-8071-d7ae1ac6430d/nationwidechildrens.org_biospecimen.TCGA-ZH-A8Y3.xml
-    3d1f143a-c4e4-4c38-a99b-357f370ebaa5/isoforms.quantification.txt
-    19fecfdf-d758-44d7-acaa-d25afc4c45c6/1e8db45c-5078-4985-ac7e-09082f2b2297_gdc_realn_rehead.bam
-    9ee608a6-975b-4c69-b558-f37b56edd657/7075a31b8c33ef962d8a336d0ad83abd_gdc_realn.bam
-    d014e1db-b77d-42ec-9db7-96c7a4bfd23e/d014e1db-b77d-42ec-9db7-96c7a4bfd23e.vcf.gz
-    
+    6266607c-5caa-4bea-be2e-74271846c171/nationwidechildrens.org_ssf.TCGA-C8-A137.xml
+    c61bb1ab-688f-4d58-8388-60ae77c28840/TCGA-BH-A0HA-11A-31D-A12Q-09_IlluminaGA-DNASeq_exome_gdc_realn.bam
+    5282c243-8d44-485a-beeb-ffb62201a60b/98cfb9c2-7c1e-4bc3-bea7-33b1ecb3ec0d_gdc_realn_rehead.bam
+    2bb1f8bb-8834-4095-b1e0-028212d26731/2bb1f8bb-8834-4095-b1e0-028212d26731.vep.vcf.gz
 ```
+
+Slide images (Tissue Slides and Diagnostic Slides) are handled a bit differently than the genomic data files.  Frequently a single biospecimen sample has several slide images associated with it; for example, top and bottom tissue slides or multiple diagnostic slides. Slide images cannot be distiguished from one another via the GDC's file metadata and researchers may want to include a sample's multiple slide images in the workspace.  .  Instead, encoded in the file names is image metadata (e.g., the TCGA Slide barcode)
+
+
 The tool also creates load files for defining sets of participants, samples and pairs.  An entity set is defined for each file attribute attached to that entity type; the set consists of those entities that have a non-empty value for that attribute.  The set may be used to target workflows that operate on that file type.  In particular, the set may be use to run a workflow that retrieves from the GDC the files referenced by the corresponding attribute.  
 
 The sets have the following identifier naming convention:
 
 ```
-	(OA|CA)__<attribute basename>
+	<attribute basename>
 	where
-	<attribute basename> = [<experimental strategy abbrev>__][<workflow type abbrev>__]<data type abbrev>
+	<attribute basename> = [<experimental strategy abbrev>__][<workflow type abbrev>__]<data type abbrev>__<data format abbrev>
 ``` 
-
-The OA/CA prefix specify whether the files reference by the corresponding attribute are open access (OA) or controlled access (CA).
 
 Here are some example set identifiers:
 
 ```
-	OA__biospecimen_data
-	OA__miRNAseq__BCGSC__isoform_expression_quantification
-	CA__RNAseq__STAR2Pass__aligned_reads
-	CA__WXS__BWAMDupCoClean__aligned_reads
-	CA__WXS__MuTect2__raw_simple_somatic_mutation
+	biospecimen_data__bcr_ssf__xml
+	WXS__BWAMDupCoClean__aligned_reads__bam
+	RNAseq__STAR2Pass__aligned_reads__bam
+	WXS__MuTect2__raw_simple_somatic_mutation__vcf
 	
 ```
 If your manifest was downloaded from the GDC Legacy Archive, you must use the `-l` option.
@@ -109,7 +106,6 @@ Right now, the two attributes that are created are:
 
 `legacy_flag` - a flag that indicates if the manifest was downloaded from the legacy archive. The flag is needed for other scripts to know where to get more file information from, e.g. the size of a file. The flag is boolean and equals "true" or "false".
 
-`workspace-column-defaults` - the default order in which the attribute columns should be shown in the table.
+`workspace-column-defaults` - the default order in which the attribute columns should be shown in the table.  
 
-Other attributes can be added if needed.
-
+Please note that the legacy archive contains many instances where multiple files will map to the same attribute name.  In these situations, fcgdctools attempts to select the "best" file based on metadata stored in the aliquot submitter id (for TCGA, the aliquot barcode).  In cases where the aliquot submitter ids are identical fcgdctools makes an arbitrary selection and prints a warning to stdout.  Users should search stdout for these warnings and adjust their loadfiles if fcgdctools' choice is incorrect.
