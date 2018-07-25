@@ -26,11 +26,10 @@ def build_filter_json(filter_attrs):
 	return filt
 
 
-def download_manifest(filt_json, is_legacy = False):
+def download_manifest(filt_json):
 	
 	#This is the API endpoint for performing a search on the GDC data portal and retrieving file information.
 	files_endpt = 'https://api.gdc.cancer.gov/files'
-	files_endpt_legacy = 'https://api.gdc.cancer.gov/legacy/files'
 
 	#Creating a new name for the manifest file
 	timestamp='{:%Y-%m-%d_%H-%M-%S}'.format(datetime.datetime.now())
@@ -39,12 +38,8 @@ def download_manifest(filt_json, is_legacy = False):
 
 	params = {'filters':json.dumps(filt_json),'size':'30000','return_type':'manifest'}
 	
-	if is_legacy:
-		# requests URL-encodes automatically
-		response = requests.get(files_endpt_legacy, params = params)
-	else:
-		# requests URL-encodes automatically
-		response = requests.get(files_endpt, params = params)
+	# requests URL-encodes automatically
+	response = requests.get(files_endpt, params = params)
 
 	#Writing the output to the manifest file
 	with open(manifest_filename, 'wb') as handle:
