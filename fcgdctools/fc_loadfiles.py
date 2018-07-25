@@ -5,6 +5,7 @@ import pprint
 import os.path
 import sys
 import time
+import traceback
 
 from fcgdctools import gdc_uuidresolver 
 
@@ -12,15 +13,12 @@ from fcgdctools import gdc_uuidresolver
 DEFERRED_FILE_NUM_OF_CASES = dict()
 
 GDC_API_ROOT = "https://api.gdc.cancer.gov"
-GDC_LEGACY_API_ROOT = "https://api.gdc.cancer.gov/legacy"
 
 #program
 class GDC_ProgramName:
     TARGET = 'TARGET'
     TCGA = 'TCGA'
     FM = 'FM'
-    #legacy archive only
-    CCLE = 'CCLE'
 
 #data categories                                                                                                                   
 class GDC_DataCategory:
@@ -32,9 +30,6 @@ class GDC_DataCategory:
     CLINICAL = "Clinical"
     DNA_METHYLATION = "DNA Methylation"
     COMBINED_NUCLEOTIDE_VARIATION = "Combined Nucleotide Variation"
-
-    #legacy archive data categories need to recognize
-    LEGACY_SNV = "Simple nucleotide variation"
 
 #data types                                                                                                                        
 class GDC_DataType:
@@ -63,26 +58,12 @@ class GDC_DataType:
 
     #data types associated with Clinical data category                                                                             
     CLINICAL_SUPPLEMENT = "Clinical Supplement"
-    #legacy data types associated with Clinical data category                                                                      
-    TISSUE_SLIDE_IMAGE = "Tissue slide image"
-    DIAGNOSTIC_IMAGE = "Diagnostic image"
-    PATHOLOGY_REPORT = "Pathology report"
-    CLINICAL_DATA = "Clinical data"
-    BIOSPECIMEN_DATA = "Biospecimen data"
     
     #associated with DNA Methylation data category                                                                                 
     METHYLATION_BETA_VALUE = "Methylation Beta Value"
     
     #associated with Combined Nucleotide Variation data category
     RAW_CGI_VARIANT = "Raw CGI Variant"
-
-    #legacy archive data types need to recognize
-    LEGACY_SIMPLE_NUCLEOTIDE_VARIATION = "Simple nucleotide variation"
-
-#access category                                                                                                                   
-class GDC_FileAccessType:
-    OPEN = 'open'
-    CONTROLLED = 'controlled'
 
 class DataSource:
     ABBREV_TRANSLATE_TABLE = ''.maketrans({'.' : '', '-' : '', ' ' : '', '_' :''})
@@ -307,11 +288,10 @@ def _constructImageAttributeName_base(experimental_strategy, workflow_type, data
     data_type_lc = data_type.lower().replace(" ", "_") + '__' 
     data_format_lc = data_format.lower().replace(" ", "_") + '__'
     
-    # see https://wiki.nci.nih.gov/display/TCGA/TCGA+barcode# for interpretation of TCGA bar code                                  
-    # that is incorporated into image filename                                                                                     
+    # see https://wiki.nci.nih.gov/display/TCGA/TCGA+barcode# for interpretation of TCGA bar code
+    # that is incorporated into image filename
     image_code, portion = _getImageCodeAndPortionFromImageFilename(filename)
     image_code_lc = image_code.lower() + '__'
-
 
     attribute_name_base = experimental_strategy_abbrev + workflow_type_abbrev + image_code_lc + data_type_lc
 
@@ -532,9 +512,7 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
     # SNV and Combined Nucleotide Variation (TARGET only) files are associated with two samples: tumor and normal. 
     if ((data_category in GDC_DataCategory.SNV and 
          data_type not in set([GDC_DataType.AGGREGATED_SOMATIC_MUTATION, GDC_DataType.MASKED_SOMATIC_MUTATION])) or
-        (data_category in GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION) or
-        (data_category in GDC_DataCategory.LEGACY_SNV and 
-         data_type in GDC_DataType.LEGACY_SIMPLE_NUCLEOTIDE_VARIATION)):
+        (data_category in GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION)):
 
         file_fields = "cases.samples.sample_type,cases.samples.portions.analytes.aliquots.submitter_id,cases.samples.sample_type_id"
         meta_retriever = MetadataRetriever(gdc_api_root, file_fields)
@@ -621,7 +599,7 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename, fi
                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program):
     # I needed to insert some special-case processing for image data files
     # this probably isn't the cleanest way to handle it, but good enough for now
-    if data_type in set([GDC_DataType.TISSUE_SLIDE_IMAGE, GDC_DataType.DIAGNOSTIC_IMAGE, GDC_DataType.SLIDE_IMAGE]):
+    if data_type in set([GDC_DataType.SLIDE_IMAGE]):
         basename, portion = _constructImageAttributeName_base(experimental_strategy, workflow_type,
                                                               data_category, data_type, data_format, filename)
         attribute_name = basename + UUID_ATTRIBUTE_SUFFIX
@@ -657,7 +635,6 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename, fi
         
         # see if attribute already defined for entity
         if attribute_name in entity:
-            entity_id = entity['entity_id']
             existing_file = entity[attribute_name]
             existing_uuid = existing_file.split("/")[0]
             existing_filename = existing_file.split("/")[1]
@@ -694,7 +671,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
         access = responseDict['access']
         program = responseDict['cases'][0]['project']['program']['name']
     except KeyError as x:
-        # we expect all files to have at least a data_category, data_type, access type and program assigned to them"
+        # we expect all files to have at least a data_category, data_type, access type and program assigned to them
         print("KeyError = ", x)
         print("SKIPPING FILE: file uuid = {0}, file name = {1}".format(file_uuid, filename))
         return
@@ -716,10 +693,6 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
         else:
             metadataRetriever = CaseMetadataRetriever(gdc_api_root)
     else:
-        metadataRetriever = CaseSampleMetadataRetriever(gdc_api_root)
-
-    # quick fix for legacy image data - will clean up
-    if data_type in set([GDC_DataType.TISSUE_SLIDE_IMAGE, GDC_DataType.DIAGNOSTIC_IMAGE]):
         metadataRetriever = CaseSampleMetadataRetriever(gdc_api_root)
 
     metadata = metadataRetriever.get_metadata(file_uuid)
@@ -986,7 +959,6 @@ def main():
     parser = argparse.ArgumentParser(description='create FireCloud workspace load files from GDC manifest')
     parser.add_argument("manifest", help="manifest file from the GDC Data Portal")
     parser.add_argument("-r", "--resolve_uuids", help="TSV file mapping GDC UUIDs to URLs")
-    parser.add_argument("-l", "--legacy", help="point to GDC Legacy Archive", action="store_true")
     parser.add_argument("-c", "--all_cases", help="create participant entities for all referenced cases", action="store_true")
     args = parser.parse_args()
 
@@ -1007,7 +979,7 @@ def main():
 
     manifestFileList = _read_manifestFile(manifestFile)
 
-    gdc_api_root = GDC_LEGACY_API_ROOT if args.legacy else GDC_API_ROOT
+    gdc_api_root = GDC_API_ROOT
 
     for i, item in enumerate(manifestFileList):
 
@@ -1025,7 +997,7 @@ def main():
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as x:
-                print("Exception=", x)
+                print(''.join(traceback.format_exception(etype=type(x), value=x, tb=x.__traceback__)))
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
                 time.sleep((attempt+1)**2)
         else:
@@ -1069,7 +1041,7 @@ def main():
     #The attributes are:
     # 1.Default order of columns when shown in the workspace.
     # 2.Whether the workspace is meant to deal with data fom the legacy site or not.
-    create_workspace_attributes_file(manifestFileBasename, args.legacy)
+    create_workspace_attributes_file(manifestFileBasename, False)
     
 
 if __name__ == '__main__':
