@@ -49,7 +49,8 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 	config_namespace = "broadinstitute_cga"
 	file_downloader_name = "gdc_file_downloader__default_cfg"
 	bam_downloader_name = "gdc_bam_downloader__default_cfg"
-	snapshot_id = 1
+	file_downloader_cfg_snapshot_id = 3
+	bam_downloader_cfg_snapshot_id = 2
 
 	for attr in attr_list:
 		
@@ -59,7 +60,8 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 		if "aligned_reads" in attr_name:
 			new_config_name = "gdc_bam_downloader__" + attr_name_base + "cfg"
 			print("Uploading and configuring method config {0}, based on {1}".format(new_config_name, bam_downloader_name))
-			api.copy_config_from_repo(billing_project, ws_name, config_namespace, bam_downloader_name, snapshot_id, config_namespace, new_config_name)
+			api.copy_config_from_repo(billing_project, ws_name, config_namespace, bam_downloader_name, bam_downloader_cfg_snapshot_id,
+						  config_namespace, new_config_name)
 			
 			current_config = api.get_workspace_config(billing_project, ws_name, config_namespace, new_config_name)
 			current_config = current_config.json()
@@ -81,7 +83,8 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain):
 		else:
 			new_config_name = "gdc_file_downloader__" + attr_name_base + "cfg"
 			print("Uploading and configuring method config {0}, based on {1}".format(new_config_name, file_downloader_name))
-			api.copy_config_from_repo(billing_project, ws_name, config_namespace, file_downloader_name, snapshot_id, config_namespace, new_config_name)
+			api.copy_config_from_repo(billing_project, ws_name, config_namespace, file_downloader_name, file_downloader_cfg_snapshot_id, 
+						  config_namespace, new_config_name)
 			
 			current_config = api.get_workspace_config(billing_project, ws_name, config_namespace, new_config_name)
 			current_config = current_config.json()
@@ -141,6 +144,8 @@ def main():
     #Following directions from the GDC, we were told that controlled access workspaces should not contain BAM files
     if args.auth_domain:
     	filters["files.data_format"] = ["BCR XML","TXT","VCF","TSV","MAF","XLSX"]
+    else:
+        filters["files.data_format"] = ["BCR XML","TXT","VCF","TSV","MAF","XLSX"]
 
     filt_json = build_filter_json(filters)
 
