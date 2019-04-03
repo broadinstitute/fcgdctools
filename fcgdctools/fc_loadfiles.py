@@ -127,14 +127,12 @@ PLATFORM = DataSource(PLATFORM_ABBREVIATIONS)
 # Sample Types                                                                                                                     
 # from https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/sample-type-codes                                              
 class SampleType:
-    SAMPLE_TYPES_DESCRIPTION = 0
-    SAMPLE_TYPES_LETTER_CODE = 1
-    SAMPLE_TYPES_TN = 2
     TUMOR = 'tumor'
     NORMAL = 'normal'
+    OTHER = 'other'
     NA = 'na'
     # this table needs updating - TARGET data had some unknown sample type ids                                                     
-    SAMPLE_TYPES = {'01': ['Primary Solid Tumor', 'TP', TUMOR],
+    GDC_SAMPLE_TYPE_IDS = {'01': ['Primary Solid Tumor', 'TP', TUMOR],
                 '02' : ['Recurrent Solid Tumor', 'TR', TUMOR],
                 '03' : ['Primary Blood Derived Cancer - Peripheral Blood', 'TB', TUMOR],
                 '04' : ['Recurrent Blood Derived Cancer - Bone Marrow', 'TRBM', TUMOR],
@@ -159,16 +157,29 @@ class SampleType:
                 '61' : ['Cell Line Derived Xenograft Tissue', 'XCL', NA],
                 '99' : ['sample type 99', '99SH', NA]}
 
-    def getTumorNormalClassification(self, sample_type_id):
-        if sample_type_id is not None:
-            return self.SAMPLE_TYPES[sample_type_id][2]
+    GDC_TISSUE_TYPES = {'Tumor': TUMOR,
+                        'Normal': NORMAL,
+                        'Abnormal': OTHER,
+                        'Peritumoral': OTHER,
+                        'Unknown': NA,
+                        'Not Reported': NA}
+
+    def getTumorNormalClassification(self, gdc_tissue_type, gdc_sample_type, gdc_sample_type_id):
+        if gdc_sample_type_id is not None:
+            return self.GDC_SAMPLE_TYPE_IDS[gdc_sample_type_id][2]
+        elif gdc_tissue_type is not None:
+            return self.GDC_TISSUE_TYPES[gdc_tissue_type]
+        elif gdc_sample_type is not None:
+            if 'Normal' in gdc_sample_type:
+                return self.NORMAL
+            else:
+                return self.TUMOR
         else:
-            # there are programs (e.g., FM) that don't specify sample type
-            # for these we assume the sample classification is Tumor
-            return self.TUMOR
+            return self.NA
+
     def getLetterCode(self, sample_type_id):
         if sample_type_id is not None:
-            return self.SAMPLE_TYPES[sample_type_id][1]
+            return self.GDC_SAMPLE_TYPE_IDS[sample_type_id][1]
         else:
             return None
 
@@ -193,7 +204,7 @@ class CaseMetadataRetriever(MetadataRetriever):
 class CaseSampleMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root):
         fields = "cases.case_id,cases.submitter_id,cases.project.project_id"
-        fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id"
+        fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id,cases.samples.sample_type,cases.samples.tissue_type"
         #fields = fields + "cases.samples.portions.analytes.aliquots.aliquot_id,cases.samples.portions.analytes.aliquots.submitter_id"
         MetadataRetriever.__init__(self, gdc_api_root, fields)
 
@@ -227,17 +238,19 @@ def _add_to_knowncases(case_metadata, known_cases):
 
 def _add_to_knownsamples(sample_metadata, case_id, known_samples):
     sample_id = sample_metadata['sample_id']
-    if 'sample_type_id' in sample_metadata:
-        sample_type_id = sample_metadata['sample_type_id']
-    else:
-        sample_type_id = None
+    tissue_type = sample_metadata['tissue_type']
+    sample_type = sample_metadata['sample_type']
+    sample_type_id = sample_metadata['sample_type_id']
+
     if sample_id not in known_samples:
         sample_submitter_id = sample_metadata['submitter_id']
         new_sample = {'submitter_id' : sample_submitter_id,
-                      'sample_type_id' : sample_type_id,
+                      'tissue_type': tissue_type,
+                      'sample_type': sample_type,
+                      'sample_type_id': sample_type_id,
                       'case_id' : case_id}
         known_samples[sample_id] = new_sample
-    return sample_id, SAMPLE_TYPE.getTumorNormalClassification(sample_type_id)
+    return sample_id, SAMPLE_TYPE.getTumorNormalClassification(tissue_type, sample_type, sample_type_id)
 
 def _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs):
     pair_id = "{0}_{1}".format(tumor_sample_id, normal_sample_id)
@@ -518,22 +531,22 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
         samples_list1 = data1['cases'][0]['samples']
         assert len(samples_list1) == 2
         for s in samples_list1:
-            sample_type = SAMPLE_TYPE.getTumorNormalClassification(s['sample_type_id'])
-            if sample_type == SAMPLE_TYPE.TUMOR:
+            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s['tissue_type'], s['sample_type'], s['sample_type_id'])
+            if sample_type_tn == SAMPLE_TYPE.TUMOR:
                 tumor_aliquot_submitter_id1 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
             else:
-                assert sample_type == SAMPLE_TYPE.NORMAL, "expected normal sample type"
+                assert sample_type_tn == SAMPLE_TYPE.NORMAL, "expected normal sample type"
                 normal_aliquot_submitter_id1 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
 
         data2 = meta_retriever.get_metadata(uuid2)
         samples_list2 = data2['cases'][0]['samples']
         assert len(samples_list2) == 2
         for s in samples_list2:
-            sample_type = SAMPLE_TYPE.getTumorNormalClassification(s['sample_type_id'])
-            if sample_type == SAMPLE_TYPE.TUMOR:
+            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s['tissue_type_'], s['sample_type'], s['sample_type_id'])
+            if sample_type_tn == SAMPLE_TYPE.TUMOR:
                 tumor_aliquot_submitter_id2 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
             else:
-                assert sample_type == SAMPLE_TYPE.NORMAL, "expected normal sample type"
+                assert sample_type_tn == SAMPLE_TYPE.NORMAL, "expected normal sample type"
                 normal_aliquot_submitter_id2 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
 
         aliquot_pair_1 = {'tumor' : tumor_aliquot_submitter_id1, 'normal' : normal_aliquot_submitter_id1}
@@ -602,7 +615,7 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
     if data_type in set([GDC_DataType.SLIDE_IMAGE]):
         basename, portion = _constructImageAttributeName_base(experimental_strategy, workflow_type,
                                                               data_category, data_type, data_format, filename)
-        attribute_name = basename + DOS_URL_ATTRIBITE_SUFFIX
+        attribute_name = basename + DOS_URL_ATTRIBUTE_SUFFIX
 
         if attribute_name in entity:
             existing_file = entity[attribute_name]
@@ -618,14 +631,14 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
             _, portion_present = _getImageCodeAndPortionFromImageFilename(filename_present)
             if portion > portion_present:
                 print("newer file has larger portion ID; use newer file")
-                entity[basename + DOS_URL_ATTRIBITE_SUFFIX] = _create_dos_url(file_uuid)
+                entity[basename + DOS_URL_ATTRIBUTE_SUFFIX] = _create_dos_url(file_uuid)
             elif portion < portion_present:
                 print("newer file has smaller portion ID; retain existing file")
             else:
                 print("Both files have samer portion ID: retain existing file")
 
         else:
-            entity[basename + DOS_URL_ATTRIBITE_SUFFIX] = _create_dos_url(file_uuid)
+            entity[basename + DOS_URL_ATTRIBUTE_SUFFIX] = _create_dos_url(file_uuid)
     else:
         basename = _constructAttributeName_base(experimental_strategy, workflow_type,
                                                 data_category, data_type, data_format)
@@ -701,6 +714,8 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
     samples = None
     if num_associated_cases == 1 and 'samples' in cases[0]:
         samples = cases[0]['samples']
+
+        #print(samples)
 
         num_associated_samples = len(samples)
 
@@ -828,7 +843,7 @@ def create_participants_file(cases, manifestFileBasename):
         participants_writer = csv.DictWriter(participantsFile, fieldnames=fieldnames, delimiter='\t')
         participants_writer.writeheader()
 
-        fieldnames = ['membership:participant_set_id', 'participant_id']
+        fieldnames = ['membership:participant_set_id', 'participant']
         membership_writer = csv.DictWriter(membershipFile, fieldnames=fieldnames, delimiter='\t')
         membership_writer.writeheader()
         
@@ -843,7 +858,7 @@ def create_participants_file(cases, manifestFileBasename):
             participants_writer.writerow(entity_row)
 
             membership_row = {'membership:participant_set_id' : 'ALL',
-                              'participant_id' : case_id}
+                              'participant' : case_id}
             membership_writer.writerow(membership_row)            
 
 def create_samples_file(samples, manifestFileBasename):
@@ -857,18 +872,20 @@ def create_samples_file(samples, manifestFileBasename):
     sample_sets_membership_filename = manifestFileBasename + '_sample_sets_membership.tsv'
     with open(samples_filename, 'w') as samplesFile, open(sample_sets_membership_filename, 'w') as membershipFile:
         
-        fieldnames = ['entity:sample_id', 'participant_id', 'submitter_id', 'sample_type'] + attribute_names
+        fieldnames = ['entity:sample_id', 'participant_id', 'submitter_id', 'sample_type_code', 'sample_type', 'tissue_type' ] + attribute_names
         sample_writer = csv.DictWriter(samplesFile, fieldnames=fieldnames, delimiter='\t')
         sample_writer.writeheader()
 
-        fieldnames = ['membership:sample_set_id', 'sample_id']
+        fieldnames = ['membership:sample_set_id', 'sample']
         membership_writer = csv.DictWriter(membershipFile, fieldnames=fieldnames, delimiter='\t')
         membership_writer.writeheader()
         
         for sample_id, sample in samples.items():
             entity_row = {'entity:sample_id' : sample_id, 'participant_id': sample['case_id'],
                           'submitter_id' : sample['submitter_id'],
-                          'sample_type' : SAMPLE_TYPE.getLetterCode(sample['sample_type_id']) if sample['sample_type_id'] is not None else '__DELETE__'}
+                          'sample_type_code' : SAMPLE_TYPE.getLetterCode(sample['sample_type_id']) if sample['sample_type_id'] is not None else '__DELETE__',
+                          'sample_type' : sample['sample_type'] if sample['sample_type'] is not None else '__DELETE__',
+                          'tissue_type' : sample['tissue_type'] if sample['tissue_type'] is not None else '__DELETE__'}
             for attribute_name in attribute_names:
                 if attribute_name in sample:
                     entity_row[attribute_name] = sample[attribute_name]
@@ -877,7 +894,7 @@ def create_samples_file(samples, manifestFileBasename):
             sample_writer.writerow(entity_row)
 
             membership_row = {'membership:sample_set_id' : 'ALL',
-                              'sample_id': sample_id}
+                              'sample': sample_id}
             membership_writer.writerow(membership_row)
                         
 def create_pairs_file(pairs, samples, manifestFileBasename):
@@ -896,7 +913,7 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
         pairs_writer = csv.DictWriter(pairsFile, fieldnames=fieldnames, delimiter='\t')
         pairs_writer.writeheader()
 
-        fieldnames = ['membership:pair_set_id', 'pair_id']
+        fieldnames = ['membership:pair_set_id', 'pair']
         membership_writer = csv.DictWriter(membershipFile, fieldnames=fieldnames, delimiter='\t')
         membership_writer.writeheader()
         
@@ -920,7 +937,7 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
             pairs_writer.writerow(entity_row)
 
             row = {'membership:pair_set_id' : 'ALL',
-                   'pair_id': pair_id}
+                   'pair': pair_id}
             membership_writer.writerow(row)
 
 
