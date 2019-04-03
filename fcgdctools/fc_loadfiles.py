@@ -7,9 +7,6 @@ import sys
 import time
 import traceback
 
-from fcgdctools import gdc_uuidresolver 
-
-
 DEFERRED_FILE_NUM_OF_CASES = dict()
 
 GDC_API_ROOT = "https://api.gdc.cancer.gov"
@@ -197,6 +194,7 @@ class CaseSampleMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root):
         fields = "cases.case_id,cases.submitter_id,cases.project.project_id"
         fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id"
+        #fields = fields + "cases.samples.portions.analytes.aliquots.aliquot_id,cases.samples.portions.analytes.aliquots.submitter_id"
         MetadataRetriever.__init__(self, gdc_api_root, fields)
 
 class FileMetadataRetriever(MetadataRetriever):
@@ -205,8 +203,7 @@ class FileMetadataRetriever(MetadataRetriever):
         MetadataRetriever.__init__(self, gdc_api_root, fields)
         
 SEPARATOR = '/'
-UUID_ATTRIBUTE_SUFFIX = "uuid_and_filename"
-URL_ATTRIBUTE_SUFFIX = "url"
+DOS_URL_ATTRIBUTE_SUFFIX = "dos_url"
 
 def _read_manifestFile(manifestFile):
 
@@ -595,14 +592,17 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
             return uuid2, name2
 
 
-def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename, file_url,
+def _create_dos_url(file_uuid):
+    return 'dos://{0}'.format(file_uuid)
+
+def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program):
     # I needed to insert some special-case processing for image data files
     # this probably isn't the cleanest way to handle it, but good enough for now
     if data_type in set([GDC_DataType.SLIDE_IMAGE]):
         basename, portion = _constructImageAttributeName_base(experimental_strategy, workflow_type,
                                                               data_category, data_type, data_format, filename)
-        attribute_name = basename + UUID_ATTRIBUTE_SUFFIX
+        attribute_name = basename + DOS_URL_ATTRIBITE_SUFFIX
 
         if attribute_name in entity:
             existing_file = entity[attribute_name]
@@ -618,20 +618,18 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename, fi
             _, portion_present = _getImageCodeAndPortionFromImageFilename(filename_present)
             if portion > portion_present:
                 print("newer file has larger portion ID; use newer file")
-                entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-                entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url            
+                entity[basename + DOS_URL_ATTRIBITE_SUFFIX] = _create_dos_url(file_uuid)
             elif portion < portion_present:
                 print("newer file has smaller portion ID; retain existing file")
             else:
                 print("Both files have samer portion ID: retain existing file")
 
         else:
-            entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url            
+            entity[basename + DOS_URL_ATTRIBITE_SUFFIX] = _create_dos_url(file_uuid)
     else:
         basename = _constructAttributeName_base(experimental_strategy, workflow_type,
                                                 data_category, data_type, data_format)
-        attribute_name = basename + UUID_ATTRIBUTE_SUFFIX
+        attribute_name = basename + DOS_URL_ATTRIBUTE_SUFFIX
         
         # see if attribute already defined for entity
         if attribute_name in entity:
@@ -649,15 +647,13 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename, fi
             print("chosen file is: {0}/{1}".format(chosen_uuid, chosen_filename))
 
             if chosen_uuid == file_uuid:
-                entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-                entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url
+                entity[basename + DOS_URL_ATTRIBUTE_SUFFIX] = _create_dos_url(file_uuid)
             else:
                 return
         else:
-            entity[basename + UUID_ATTRIBUTE_SUFFIX] = file_uuid + SEPARATOR + filename
-            entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url
+            entity[basename + DOS_URL_ATTRIBUTE_SUFFIX] = _create_dos_url(file_uuid)
 
-def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, known_samples, known_pairs, deferred_file_uuids):
+def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samples, known_pairs, deferred_file_uuids):
     
     # get from GDC the data file's category, type, access type, format, experimental strategy,
     # analysis workflow type
@@ -705,18 +701,19 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
     samples = None
     if num_associated_cases == 1 and 'samples' in cases[0]:
         samples = cases[0]['samples']
+
         num_associated_samples = len(samples)
 
     # first consider files that are associated with a single case
     if num_associated_cases == 1:
         if num_associated_samples == 0:
             case_id = _add_to_knowncases(cases[0], known_cases)
-            _add_file_attribute(gdc_api_root, case_id, known_cases[case_id], file_uuid, filename, file_url,
+            _add_file_attribute(gdc_api_root, case_id, known_cases[case_id], file_uuid, filename,
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
         elif num_associated_samples == 1:
             case_id = _add_to_knowncases(cases[0], known_cases)
             sample_id, _ = _add_to_knownsamples(samples[0], case_id, known_samples)
-            _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename, file_url, 
+            _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename,
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
         elif num_associated_samples == 2:
             case_id = _add_to_knowncases(cases[0], known_cases)
@@ -731,7 +728,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
                 normal_sample_id = sample1_id
 
             pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
-            _add_file_attribute(gdc_api_root, pair_id, known_pairs[pair_id], file_uuid, filename, file_url,
+            _add_file_attribute(gdc_api_root, pair_id, known_pairs[pair_id], file_uuid, filename,
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
         else:
             # file associated with more than two samples from a single case
@@ -751,7 +748,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
 # can be overridden by setting all_cases to true, in which case a paricipant entity will be created for each
 # case a file is associated with.
 
-def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, known_cases, known_samples, all_cases):
+def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, known_cases, known_samples, all_cases):
     
     # get data file's name, category, type, access, format experimental strategy, workflow type
     fileMetadataRetriever = FileMetadataRetriever(gdc_api_root)
@@ -807,11 +804,11 @@ def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, know
                 for sample in samples:
                     sample_id = sample['sample_id']
                     if sample_id in known_samples:
-                        _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename, file_url,
+                        _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename,
                                             data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
             else:
                 # associated with multiple cases only
-                _add_file_attribute(gdc_api_root, case_id, known_cases[case_id], file_uuid, filename, file_url,
+                _add_file_attribute(gdc_api_root, case_id, known_cases[case_id], file_uuid, filename,
                                     data_category, data_type, data_format,experimental_strategy, workflow_type, access, program)
 
 
@@ -823,8 +820,8 @@ def create_participants_file(cases, manifestFileBasename):
             if attribute_name not in attribute_names:
                 attribute_names.append(attribute_name)
     
-    participants_filename = manifestFileBasename + '_participants.txt'
-    participant_sets_membership_filename = manifestFileBasename + '_participant_sets_membership.txt'
+    participants_filename = manifestFileBasename + '_participants.tsv'
+    participant_sets_membership_filename = manifestFileBasename + '_participant_sets_membership.tsv'
     
     with open(participants_filename, 'w') as participantsFile, open(participant_sets_membership_filename, 'w') as membershipFile:
         fieldnames = ['entity:participant_id'] + attribute_names
@@ -840,11 +837,6 @@ def create_participants_file(cases, manifestFileBasename):
             for attribute_name in attribute_names:
                 if attribute_name in case:
                     entity_row[attribute_name] = case[attribute_name]
-                    if attribute_name.endswith(UUID_ATTRIBUTE_SUFFIX):
-                        basename = attribute_name[0:-(len(UUID_ATTRIBUTE_SUFFIX)+2)]
-                        membership_row = {'membership:participant_set_id' : basename,
-                                          'participant_id' : case_id}
-                        membership_writer.writerow(membership_row)
                 else:
                     entity_row[attribute_name] = '__DELETE__'
                 entity_row[attribute_name] = case[attribute_name] if attribute_name in case else '__DELETE__'
@@ -861,8 +853,8 @@ def create_samples_file(samples, manifestFileBasename):
             if attribute_name not in {'submitter_id', 'case_id', 'sample_type_id'} and attribute_name not in attribute_names:
                 attribute_names.append(attribute_name)
 
-    samples_filename = manifestFileBasename + '_samples.txt'
-    sample_sets_membership_filename = manifestFileBasename + '_sample_sets_membership.txt'
+    samples_filename = manifestFileBasename + '_samples.tsv'
+    sample_sets_membership_filename = manifestFileBasename + '_sample_sets_membership.tsv'
     with open(samples_filename, 'w') as samplesFile, open(sample_sets_membership_filename, 'w') as membershipFile:
         
         fieldnames = ['entity:sample_id', 'participant_id', 'submitter_id', 'sample_type'] + attribute_names
@@ -880,11 +872,6 @@ def create_samples_file(samples, manifestFileBasename):
             for attribute_name in attribute_names:
                 if attribute_name in sample:
                     entity_row[attribute_name] = sample[attribute_name]
-                    if attribute_name.endswith(UUID_ATTRIBUTE_SUFFIX):
-                        basename = attribute_name[0:-(len(UUID_ATTRIBUTE_SUFFIX)+2)]
-                        membership_row = {'membership:sample_set_id' : basename,
-                                          'sample_id' : sample_id}
-                        membership_writer.writerow(membership_row)
                 else:
                     entity_row[attribute_name] = '__DELETE__'
             sample_writer.writerow(entity_row)
@@ -900,8 +887,8 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
             if attribute_name not in {'tumor', 'normal'} and attribute_name not in attribute_names:
                 attribute_names.append(attribute_name)
 
-    pairs_filename = manifestFileBasename + '_pairs.txt'
-    pair_sets_membership_filename = manifestFileBasename + '_pair_sets_membership.txt'
+    pairs_filename = manifestFileBasename + '_pairs.tsv'
+    pair_sets_membership_filename = manifestFileBasename + '_pair_sets_membership.tsv'
     with open(pairs_filename, 'w') as pairsFile, open(pair_sets_membership_filename, 'w') as membershipFile:
         fieldnames = ['entity:pair_id', 'participant_id', 'case_sample_id', 'control_sample_id',
                     'tumor_submitter_id', 'normal_submitter_id',
@@ -928,11 +915,6 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
             for attribute_name in attribute_names:
                 if attribute_name in pair:
                     entity_row[attribute_name] = pair[attribute_name]
-                    if attribute_name.endswith(UUID_ATTRIBUTE_SUFFIX):
-                        basename = attribute_name[0:-(len(UUID_ATTRIBUTE_SUFFIX)+2)]
-                        membership_row = {'membership:pair_set_id' : basename,
-                                          'pair_id': pair_id}
-                        membership_writer.writerow(membership_row)
                 else:
                     entity_row[attribute_name] = '__DELETE__'
             pairs_writer.writerow(entity_row)
@@ -951,24 +933,19 @@ def create_workspace_attributes_file(manifestFileBasename, is_legacy):
 
     #Due to a somewhat weird bug in FireCloud, please keep the workspace-colunm-defaults attribute as the last one in the list.
     #Any new attributes should be added before workspace-column-defaults
-    with open(manifestFileBasename + "_workspace_attributes.txt", 'w') as workspaceColumnOrderFile:
+    with open(manifestFileBasename + "_workspace_attributes.tsv", 'w') as workspaceColumnOrderFile:
         workspaceColumnOrderFile.write("workspace:legacy_flag\tworkspace-column-defaults\n")
         workspaceColumnOrderFile.write(legacy_flag + "\t" + "{\"participant\": {\"shown\": [\"submitter_id\", \"project_id\", \"participant_id\"]}, \"sample\":{\"shown\":[\"submitter_id\", \"sample_id\", \"participant\", \"sample_type\"]}, \"pair\":{\"shown\":[\"tumor_submitter_id\", \"normal_submitter_id\", \"pair_id\"]}}")
 
 def main():
     parser = argparse.ArgumentParser(description='create FireCloud workspace load files from GDC manifest')
     parser.add_argument("manifest", help="manifest file from the GDC Data Portal")
-    parser.add_argument("-r", "--resolve_uuids", help="TSV file mapping GDC UUIDs to URLs")
     parser.add_argument("-c", "--all_cases", help="create participant entities for all referenced cases", action="store_true")
     args = parser.parse_args()
 
     print("manifestFile = {0}".format(args.manifest))
-    print("resolverTsvFile = {0}".format(args.resolve_uuids))
 
     manifestFile = args.manifest
-    uuidResolver = None
-    if args.resolve_uuids is not None:
-        uuidResolver = gdc_uuidresolver.UuidResolver(args.resolve_uuids, '__DELETE__')
 
     pp = pprint.PrettyPrinter()
 
@@ -985,13 +962,12 @@ def main():
 
         file_uuid = item['id']
         filename = item['filename']
-        file_url = uuidResolver.getURL(file_uuid) if uuidResolver is not None else "__DELETE__"
     
         print('{0} of {1}: {2}, {3}'.format(i+1, len(manifestFileList), file_uuid, filename))
 
         for attempt in range(5):
             try:
-                get_file_metadata(gdc_api_root, file_uuid, filename, file_url, cases, samples, 
+                get_file_metadata(gdc_api_root, file_uuid, filename, cases, samples, 
                                   pairs, deferred_file_uuids)
                 break
             except (KeyboardInterrupt, SystemExit):
@@ -1011,11 +987,10 @@ def main():
         file_uuid = uuid_and_filename[0]
         filename = uuid_and_filename[1]
         print("{0}, {1} ".format(file_uuid, filename))
-        file_url =  file_url = uuidResolver.getURL(file_uuid) if uuidResolver is not None else "__DELETE__"
 
         for attempt in range(5):
             try:
-                process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, cases, samples, args.all_cases)
+                process_deferred_file_uuid(gdc_api_root, file_uuid, filename, cases, samples, args.all_cases)
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as x:
