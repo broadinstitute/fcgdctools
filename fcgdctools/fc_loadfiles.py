@@ -205,7 +205,7 @@ class CaseSampleMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root):
         fields = "cases.case_id,cases.submitter_id,cases.project.project_id"
         fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id,cases.samples.sample_type,cases.samples.tissue_type"
-        #fields = fields + "cases.samples.portions.analytes.aliquots.aliquot_id,cases.samples.portions.analytes.aliquots.submitter_id"
+        fields = fields + ",cases.sample_ids"
         MetadataRetriever.__init__(self, gdc_api_root, fields)
 
 class FileMetadataRetriever(MetadataRetriever):
@@ -240,7 +240,10 @@ def _add_to_knownsamples(sample_metadata, case_id, known_samples):
     sample_id = sample_metadata['sample_id']
     tissue_type = sample_metadata['tissue_type']
     sample_type = sample_metadata['sample_type']
-    sample_type_id = sample_metadata['sample_type_id']
+    if 'sample_type_id' in sample_metadata:
+        sample_type_id = sample_metadata['sample_type_id']
+    else:
+        sample_type_id = None
 
     if sample_id not in known_samples:
         sample_submitter_id = sample_metadata['submitter_id']
@@ -668,6 +671,8 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
 
 def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samples, known_pairs, deferred_file_uuids):
     
+    pp = pprint.PrettyPrinter()
+
     # get from GDC the data file's category, type, access type, format, experimental strategy,
     # analysis workflow type
     fileMetadataRetriever = FileMetadataRetriever(gdc_api_root)
@@ -706,7 +711,11 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
 
     metadata = metadataRetriever.get_metadata(file_uuid)
 
+    print('metadata:')
+    pp.pprint(metadata)
+
     cases = metadata['cases']
+
     num_associated_cases = len(cases)
     assert num_associated_cases > 0, file_uuid
 
