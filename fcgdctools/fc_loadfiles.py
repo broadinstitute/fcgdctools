@@ -192,6 +192,8 @@ class MetadataRetriever():
 
     def get_metadata(self, file_uuid):
         url = "{0}/files/{1}?fields={2}".format(self.gdc_api_root, file_uuid, self.fields)
+        #debug
+        print('url: {0}'.format(url))
         response = requests.get(url, headers=None, timeout=5)
         responseDict = response.json()
         return responseDict['data']
@@ -205,7 +207,7 @@ class CaseSampleMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root):
         fields = "cases.case_id,cases.submitter_id,cases.project.project_id"
         fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id,cases.samples.sample_type,cases.samples.tissue_type"
-        fields = fields + ",cases.sample_ids"
+        fields = fields + ",cases.samples.portions.analytes.aliquots.submitter_id"
         MetadataRetriever.__init__(self, gdc_api_root, fields)
 
 class FileMetadataRetriever(MetadataRetriever):
@@ -711,6 +713,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
 
     metadata = metadataRetriever.get_metadata(file_uuid)
 
+    #debug
     print('metadata:')
     pp.pprint(metadata)
 
