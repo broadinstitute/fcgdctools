@@ -7,6 +7,8 @@ import sys
 import time
 import traceback
 
+UUID_TO_FILENAME = dict()
+
 DEFERRED_FILE_NUM_OF_CASES = dict()
 
 GDC_API_ROOT = "https://api.gdc.cancer.gov"
@@ -193,7 +195,7 @@ class MetadataRetriever():
     def get_metadata(self, file_uuid):
         url = "{0}/files/{1}?fields={2}".format(self.gdc_api_root, file_uuid, self.fields)
         #debug
-        print('url: {0}'.format(url))
+        #print('url: {0}'.format(url))
         response = requests.get(url, headers=None, timeout=5)
         responseDict = response.json()
         return responseDict['data']
@@ -613,6 +615,9 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
 def _create_dos_url(file_uuid):
     return 'dos://{0}'.format(file_uuid)
 
+def _get_file_uuid_from_dos_url(dos_url):
+    return dos_url.partition('dos://')[2]
+
 def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program):
     # I needed to insert some special-case processing for image data files
@@ -623,17 +628,17 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
         attribute_name = basename + DOS_URL_ATTRIBUTE_SUFFIX
 
         if attribute_name in entity:
-            existing_file = entity[attribute_name]
-            existing_uuid = existing_file.split("/")[0]
-            existing_filename = existing_file.split("/")[1]
+            existing_dos_url = entity[attribute_name]
+            existing_uuid = _get_file_uuid_from_dos_url(existing_dos_url)
+
+            existing_filename = UUID_TO_FILENAME[existing_uuid]
 
             print("multiple files for same attribute!") 
             print("entity id: {0}, attribute name: {1}".format(entity_id, attribute_name))
             print("new file: {0}/{1}".format(file_uuid, filename))
-            print("existing file: {0}".format(entity[attribute_name]))
+            print("existing file: {0}/{1}".format(existing_uuid, existing_filename))
 
-            filename_present = entity[attribute_name]
-            _, portion_present = _getImageCodeAndPortionFromImageFilename(filename_present)
+            _, portion_present = _getImageCodeAndPortionFromImageFilename(existing_filename)
             if portion > portion_present:
                 print("newer file has larger portion ID; use newer file")
                 entity[basename + DOS_URL_ATTRIBUTE_SUFFIX] = _create_dos_url(file_uuid)
@@ -651,14 +656,14 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
         
         # see if attribute already defined for entity
         if attribute_name in entity:
-            existing_file = entity[attribute_name]
-            existing_uuid = existing_file.split("/")[0]
-            existing_filename = existing_file.split("/")[1]
+            existing_dos_url = entity[attribute_name]
+            existing_uuid = _get_file_uuid_from_dos_url(existing_dos_url)
+            existing_filename = UUID_TO_FILENAME[existing_uuid]
 
             print("multiple files for same attribute!")
             print("entity id: {0}, attribute name: {1}".format(entity_id, attribute_name))
             print("new file: {0}/{1}".format(file_uuid, filename))
-            print("existing file: {0}".format(entity[attribute_name]))
+            print("existing file: {0}/{1}".format(existing_uuid, existing_filename))
             
             chosen_uuid, chosen_filename = _resolve_collision(gdc_api_root, data_category, data_type, program,
                                                               file_uuid, filename, existing_uuid, existing_filename)
@@ -714,8 +719,8 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
     metadata = metadataRetriever.get_metadata(file_uuid)
 
     #debug
-    print('metadata:')
-    pp.pprint(metadata)
+    #print('metadata:')
+    #pp.pprint(metadata)
 
     cases = metadata['cases']
 
@@ -992,6 +997,8 @@ def main():
         file_uuid = item['id']
         filename = item['filename']
     
+        UUID_TO_FILENAME[file_uuid] = filename
+
         print('{0} of {1}: {2}, {3}'.format(i+1, len(manifestFileList), file_uuid, filename))
 
         for attempt in range(5):
@@ -1001,6 +1008,9 @@ def main():
                 break
             except (KeyboardInterrupt, SystemExit):
                 raise
+            except ValueError as x:
+                print('Value Error, skip: {0}'.format(x))
+                break
             except Exception as x:
                 print(''.join(traceback.format_exception(etype=type(x), value=x, tb=x.__traceback__)))
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
@@ -1023,7 +1033,7 @@ def main():
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as x:
-                print("Exception=", x)
+                print(''.join(traceback.format_exception(etype=type(x), value=x, tb=x.__traceback__)))
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
                 time.sleep((attempt+1)**2)
             else:
