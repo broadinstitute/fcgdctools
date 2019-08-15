@@ -246,10 +246,7 @@ def _add_to_knownsamples(sample_metadata, case_id, known_samples):
     sample_id = sample_metadata['sample_id']
     tissue_type = sample_metadata['tissue_type']
     sample_type = sample_metadata['sample_type']
-    if 'sample_type_id' in sample_metadata:
-        sample_type_id = sample_metadata['sample_type_id']
-    else:
-        sample_type_id = None
+    sample_type_id = sample_metadata.get('sample_type_id')
 
     if sample_id not in known_samples:
         sample_submitter_id = sample_metadata['submitter_id']
@@ -260,6 +257,12 @@ def _add_to_knownsamples(sample_metadata, case_id, known_samples):
                       'case_id' : case_id}
         known_samples[sample_id] = new_sample
     return sample_id, SAMPLE_TYPE.getTumorNormalClassification(tissue_type, sample_type, sample_type_id)
+
+def _get_sample_type(sample_metadata):
+    tissue_type = sample_metadata['tissue_type']
+    sample_type = sample_metadata['sample_type']
+    sample_type_id = sample_metadata.get('sample_type_id')
+    return SAMPLE_TYPE.getTumorNormalClassification(tissue_type, sample_type, sample_type_id)
 
 def _add_pooled_sample_to_knownsamples(sample1_metadata, sample2_metadata, case_id, known_samples):
     sample1_id = sample1_metadata['sample_id']
@@ -786,7 +789,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
 
         elif num_associated_samples == 2:
-            if program == GDC_ProgramName.CPTAC and data_category == GDC_DataCategory.SEQUENCING_READS:
+            if program == GDC_ProgramName.CPTAC and data_category != GDC_DataCategory.SNV:
                 # Within the CPTAC program, if a given specimen did not have enough material for proteomics or 
                 # genomics, multiple specimens or cores from a given patient are being combined to get 
                 # sufficient material. 
@@ -811,28 +814,46 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
                     pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
                     _add_file_attribute(gdc_api_root, pair_id, known_pairs[pair_id], file_uuid, filename,
                                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
-        else:
+        elif num_associated_samples > 2 and num_associated_samples <=4:
             if program == GDC_ProgramName.CPTAC and data_category == GDC_DataCategory.SNV:
                 # Within the CPTAC program, if a given specimen did not have enough material for proteomics or 
                 # genomics, multiple specimens or cores from a given patient are being combined to get 
                 # sufficient material. 
                 case_id = _add_to_knowncases(cases[0], known_cases)
-                sample1_id, sample1_type_tn = _add_to_knownsamples(samples[0], case_id, known_samples)
-                sample2_id, sample2_type_tn = _add_to_knownsamples(samples[1], case_id, known_samples)
-                assert sample1_type_tn != sample2_type_tn, "not tumor/normal pair"
-                if sample1_type_tn == SAMPLE_TYPE.TUMOR:
-                    tumor_sample_id = sample1_id
-                    normal_sample_id = sample2_id
+                tumor_samples = []
+                normal_samples = []
+                na_samples = []
+                for sample in samples:
+                    sample_type = _get_sample_type(sample)
+                    if sample_type == SAMPLE_TYPE.TUMOR:
+                        tumor_samples.append(sample)
+                    elif sample_type == SAMPLE_TYPE.NORMAL:
+                        normal_samples.append(sample)
+                    else:
+                        na_samples.append(sample)
+                if len(tumor_samples)== 2:
+                    tumor_sample_id, _pwd = _add_pooled_sample_to_knownsamples(tumor_samples[0], tumor_samples[1], case_id, known_samples)
+                elif len(tumor_samples) == 1:
+                    tumor_sample_id, _pwd = _add_to_knownsamples(tumor_samples[0], case_id, known_samples)
                 else:
-                    tumor_sample_id = sample2_id
-                    normal_sample_id = sample1_id
+                    print('issue with tumor samples, number of tumor samples = {0}'.format(len(tumor_samples)))
+                    raise ValueError(file_uuid, filename, data_category)
+                    
 
-                    pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
-                    _add_file_attribute(gdc_api_root, pair_id, known_pairs[pair_id], file_uuid, filename,
+                if len(normal_samples) == 2:
+                    normal_sample_id, _pwd = _add_pooled_sample_to_knownsamples(normal_samples[0], normal_samples[1], case_id, known_samples)
+                elif len(normal_samples) == 1:
+                    normal_sample_id, _pwd = _add_to_knownsamples(normal_samples[0], case_id, known_samples)
+                else:
+                    print('issue with normal samples, number of normal samples = {0}'.format(len(normal_samples)))
+                    raise ValueError(file_uuid, filename, data_category)
+
+                pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
+                _add_file_attribute(gdc_api_root, pair_id, known_pairs[pair_id], file_uuid, filename,
                                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
 
             else:
-            # file associated with more than two samples from a single case
+            # file associated with more than four samples from a single case
             # not sure how to process this...don't believe there are any such files in GDC
                 raise ValueError(file_uuid, filename, data_category)
 
