@@ -657,7 +657,7 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename, fi
         
         # see if attribute already defined for entity
         if attribute_name in entity:
-            entity_id = entity['entity_id']
+            #entity_id = entity['entity_id']
             existing_file = entity[attribute_name]
             existing_uuid = existing_file.split("/")[0]
             existing_filename = existing_file.split("/")[1]
@@ -681,7 +681,6 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename, fi
             entity[basename + URL_ATTRIBUTE_SUFFIX] = file_url
 
 def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, known_samples, known_pairs, deferred_file_uuids):
-    
     # get from GDC the data file's category, type, access type, format, experimental strategy,
     # analysis workflow type
     fileMetadataRetriever = FileMetadataRetriever(gdc_api_root)
@@ -699,7 +698,6 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, file_url, known_cases, 
         print("SKIPPING FILE: file uuid = {0}, file name = {1}".format(file_uuid, filename))
         return
     
-          
     if 'experimental_strategy' in responseDict:
         experimental_strategy = responseDict['experimental_strategy']
     else: 
@@ -994,10 +992,14 @@ def main():
     print("resolverTsvFile = {0}".format(args.resolve_uuids))
 
     manifestFile = args.manifest
+
     uuidResolver = None
     if args.resolve_uuids is not None:
         uuidResolver = gdc_uuidresolver.UuidResolver(args.resolve_uuids, '__DELETE__')
 
+    load_files(manifestFile, args.all_cases, args.legacy, uuidResolver)
+
+def load_files(manifestFile, all_cases, legacy, uuidResolver=None):
     pp = pprint.PrettyPrinter()
 
     cases = dict()
@@ -1007,7 +1009,7 @@ def main():
 
     manifestFileList = _read_manifestFile(manifestFile)
 
-    gdc_api_root = GDC_LEGACY_API_ROOT if args.legacy else GDC_API_ROOT
+    gdc_api_root = GDC_LEGACY_API_ROOT if legacy else GDC_API_ROOT
 
     for i, item in enumerate(manifestFileList):
 
@@ -1016,6 +1018,7 @@ def main():
         file_url = uuidResolver.getURL(file_uuid) if uuidResolver is not None else "__DELETE__"
     
         print('{0} of {1}: {2}, {3}'.format(i+1, len(manifestFileList), file_uuid, filename))
+        print("\t",file_url)
 
         for attempt in range(5):
             try:
@@ -1043,7 +1046,7 @@ def main():
 
         for attempt in range(5):
             try:
-                process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, cases, samples, args.all_cases)
+                process_deferred_file_uuid(gdc_api_root, file_uuid, filename, file_url, cases, samples, all_cases)
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as x:
@@ -1069,7 +1072,7 @@ def main():
     #The attributes are:
     # 1.Default order of columns when shown in the workspace.
     # 2.Whether the workspace is meant to deal with data fom the legacy site or not.
-    create_workspace_attributes_file(manifestFileBasename, args.legacy)
+    create_workspace_attributes_file(manifestFileBasename, legacy)
     
 
 if __name__ == '__main__':

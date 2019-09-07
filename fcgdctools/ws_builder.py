@@ -6,6 +6,8 @@ import os
 import datetime
 import firecloud.api as api
 from manifest_downloader import build_filter_json, download_manifest
+from fc_loadfiles import load_files
+from fcgdctools import gdc_uuidresolver 
 
 FILE_TYPE_DICT = {
 	"default": ["open"],
@@ -141,7 +143,8 @@ def main():
     filters["files.access"] = file_types
     #Following directions from the GDC, we were told that controlled access workspaces should not contain BAM files
     if args.auth_domain:
-    	filters["files.data_format"] = ["BCR XML","TXT","VCF","TSV","MAF","XLSX"]
+    	print("using auth domain for controlled access data.")
+    	filters["files.data_format"] = ["BCR XML","TXT","VCF","TSV","MAF","XLSX","BAM"]
 
     filt_json = build_filter_json(filters)
 
@@ -151,19 +154,25 @@ def main():
     
     #Step 3:
     #Run fcgdctools on the manifest file
-    if args.project_name == "TARGET":
-    	if args.legacy:
-    		fcgdctools_command = "genFcWsLoadFiles -c -l " + manifest_filename + ">genFcWsLoadFiles_output.txt"
-    	else:
-    		fcgdctools_command = "genFcWsLoadFiles -c " + manifest_filename + ">genFcWsLoadFiles_output.txt"
-    else:
-    	if args.legacy:
-    		fcgdctools_command = "genFcWsLoadFiles -l " + manifest_filename + ">genFcWsLoadFiles_output.txt"
-    	else:
-    		fcgdctools_command = "genFcWsLoadFiles " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    # if args.project_name == "TARGET":
+    # 	if args.legacy:
+    # 		fcgdctools_command = "genFcWsLoadFiles -c -l " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    # 	else:
+    # 		fcgdctools_command = "genFcWsLoadFiles -c " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    # else:
+    # 	if args.legacy:
+    # 		fcgdctools_command = "genFcWsLoadFiles -l " + manifest_filename + ">genFcWsLoadFiles_output.txt"
+    # 	else:
+    # 		fcgdctools_command = "genFcWsLoadFiles " + manifest_filename + ">genFcWsLoadFiles_output.txt"
 
-    print("Executing command {0}\nPlease check the output file to see progress and check for errors.".format(fcgdctools_command))
-    os.system(fcgdctools_command)
+	#Run fcgdctools on the manifest file
+    all_cases = False
+    if args.project_name == "TARGET":
+        all_cases = True
+
+    uuidResolver = gdc_uuidresolver.UuidResolver("/Users/abaumann/Downloads/GDC_full_sync_legacy_manifest_20190326_post_DR16.0_DCF.tsv.fcgdctools", '__DELETE__')
+    #print("Executing command {0}\nPlease check the output file to see progress and check for errors.".format(fcgdctools_command))
+    load_files(manifest_filename, all_cases, args.legacy, uuidResolver)
     
     #Step 4:
     #Prepare attributes to be loaded
@@ -192,7 +201,7 @@ def main():
     print("The downloadable attributes are:")
     for attr in downloadable_attrs:
     	print(attr[0])
-    create_method_configs(args.billing_project, workspace_name, downloadable_attrs, args.auth_domain)
+    #create_method_configs(args.billing_project, workspace_name, downloadable_attrs, args.auth_domain)
 
 if __name__ == '__main__':
     main()

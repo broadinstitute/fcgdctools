@@ -52,5 +52,7 @@ class UuidResolver:
             url = db[uuid].decode("utf-8")
         except KeyError:
             url = self.unknownResponse
+            print("Unable to find find for UUID: %s"%uuid)
+            exit(1)
         db.close()
         return url
