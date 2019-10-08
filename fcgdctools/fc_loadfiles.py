@@ -220,7 +220,7 @@ class FileMetadataRetriever(MetadataRetriever):
         MetadataRetriever.__init__(self, gdc_api_root, fields)
         
 SEPARATOR = '/'
-DOS_URL_ATTRIBUTE_SUFFIX = "dos_url"
+DRS_URL_ATTRIBUTE_SUFFIX = "drs_url"
 
 def _read_manifestFile(manifestFile):
 
@@ -264,40 +264,34 @@ def _get_sample_type(sample_metadata):
     sample_type_id = sample_metadata.get('sample_type_id')
     return SAMPLE_TYPE.getTumorNormalClassification(tissue_type, sample_type, sample_type_id)
 
-def _add_pooled_sample_to_knownsamples(sample1_metadata, sample2_metadata, case_id, known_samples):
-    sample1_id = sample1_metadata['sample_id']
-    sample2_id = sample2_metadata['sample_id']
-    tissue1_type = sample1_metadata['tissue_type']
-    tissue2_type = sample2_metadata['tissue_type']
-    sample1_type = sample1_metadata['sample_type']
-    sample2_type = sample2_metadata['sample_type']
-    if 'sample_type_id' in sample1_metadata:
-        sample1_type_id = sample1_metadata['sample_type_id']
-    else:
-        sample1_type_id = None
-    if 'sample_type_id' in sample2_metadata:
-        sample2_type_id = sample2_metadata['sample_type_id']
-    else:
-        sample2_type_id = None
+def _add_pooled_sample_to_knownsamples(file_uuid, filename, samples_metadata, case_id, known_samples):
+    sample_ids = [sample_metadata['sample_id'] for sample_metadata in samples_metadata]
+    submitter_ids = [sample_metadata['submitter_id'] for sample_metadata in samples_metadata]
+    tissue_types = [sample_metadata.get('tissue_type') for sample_metadata in samples_metadata]
+    sample_types = [sample_metadata.get('sample_type') for sample_metadata in samples_metadata]
+    sample_type_ids = [sample_metadata.get('sample_type_id') for sample_metadata in samples_metadata]
 
-    if tissue1_type != tissue2_type or sample1_type != sample2_type or sample1_type_id != sample2_type_id:
-        raise ValueError(tissue1_type, tissue2_type, sample1_type, sample2_type, sample1_type_id, sample2_type_id)
-    if sample1_id >= sample2_id:
-        pooled_sample_id = '{0}__{1}'.format(sample1_id, sample2_id)
-        pooled_sample_submitter_id = '{0}__{1}'.format(sample1_metadata['submitter_id'],
-                                                       sample2_metadata['submitter_id'])
-    else:
-        pooled_sample_id = '{1}__{0}'.format(sample1_id, sample2_id)
-        pooled_sample_submitter_id = '{1}__{0}'.format(sample1_metadata['submitter_id'],
-                                                       sample2_metadata['submitter_id'])
+    if len(set(tissue_types)) != 1:
+        print('inconsistent tissue types in polled sample: {0}'.format(tissue_types))
+        raise ValueError(file_uuid, filename)
+    if len(set(sample_types)) != 1:
+        print('inconsistent sample types in polled sample: {0}'.format(sample_types))
+        raise ValueError(file_uuid, filename)
+    if len(set(sample_type_ids)) != 1:
+        print('inconsistent sample type ids in polled sample: {0}'.format(sample_type_ids))
+        raise ValueError(file_uuid, filename)
+
+    pooled_sample_id = '__'.join(sorted(sample_ids))
+    pooled_sample_submitter_id = '__'.join(sorted(submitter_ids))
+
     if pooled_sample_id not in known_samples:
         new_sample = {'submitter_id' : pooled_sample_submitter_id,
-                      'tissue_type': tissue1_type,
-                      'sample_type': sample1_type,
-                      'sample_type_id': sample1_type_id,
+                      'tissue_type': tissue_types[0],
+                      'sample_type': sample_types[0],
+                      'sample_type_id': sample_type_ids[0],
                       'case_id' : case_id}
         known_samples[pooled_sample_id] = new_sample
-    return pooled_sample_id, SAMPLE_TYPE.getTumorNormalClassification(tissue1_type, sample1_type, sample1_type_id)
+    return pooled_sample_id, SAMPLE_TYPE.getTumorNormalClassification(tissue_types[0], sample_types[0], sample_type_ids[0])
         
 
 def _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs):
@@ -653,11 +647,11 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
             return uuid2, name2
 
 
-def _create_dos_url(file_uuid):
-    return 'dos://{0}'.format(file_uuid)
+def _create_drs_url(file_uuid):
+    return 'drs://dataguids.org/{0}'.format(file_uuid)
 
-def _get_file_uuid_from_dos_url(dos_url):
-    return dos_url.partition('dos://')[2]
+def _get_file_uuid_from_drs_url(drs_url):
+    return drs_url.partition('drs://dataguids.org/')[2]
 
 def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program):
@@ -666,11 +660,11 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
     if data_type in set([GDC_DataType.SLIDE_IMAGE]):
         basename, portion = _constructImageAttributeName_base(experimental_strategy, workflow_type,
                                                               data_category, data_type, data_format, filename)
-        attribute_name = basename + DOS_URL_ATTRIBUTE_SUFFIX
+        attribute_name = basename + DRS_URL_ATTRIBUTE_SUFFIX
 
         if attribute_name in entity:
-            existing_dos_url = entity[attribute_name]
-            existing_uuid = _get_file_uuid_from_dos_url(existing_dos_url)
+            existing_drs_url = entity[attribute_name]
+            existing_uuid = _get_file_uuid_from_drs_url(existing_drs_url)
 
             existing_filename = UUID_TO_FILENAME[existing_uuid]
 
@@ -682,23 +676,23 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
             _, portion_present = _getImageCodeAndPortionFromImageFilename(existing_filename)
             if portion > portion_present:
                 print("newer file has larger portion ID; use newer file")
-                entity[basename + DOS_URL_ATTRIBUTE_SUFFIX] = _create_dos_url(file_uuid)
+                entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
             elif portion < portion_present:
                 print("newer file has smaller portion ID; retain existing file")
             else:
                 print("Both files have samer portion ID: retain existing file")
 
         else:
-            entity[basename + DOS_URL_ATTRIBUTE_SUFFIX] = _create_dos_url(file_uuid)
+            entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
     else:
         basename = _constructAttributeName_base(experimental_strategy, workflow_type,
                                                 data_category, data_type, data_format)
-        attribute_name = basename + DOS_URL_ATTRIBUTE_SUFFIX
+        attribute_name = basename + DRS_URL_ATTRIBUTE_SUFFIX
         
         # see if attribute already defined for entity
         if attribute_name in entity:
-            existing_dos_url = entity[attribute_name]
-            existing_uuid = _get_file_uuid_from_dos_url(existing_dos_url)
+            existing_drs_url = entity[attribute_name]
+            existing_uuid = _get_file_uuid_from_drs_url(existing_drs_url)
             existing_filename = UUID_TO_FILENAME[existing_uuid]
 
             print("multiple files for same attribute!")
@@ -711,11 +705,11 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
             print("chosen file is: {0}/{1}".format(chosen_uuid, chosen_filename))
 
             if chosen_uuid == file_uuid:
-                entity[basename + DOS_URL_ATTRIBUTE_SUFFIX] = _create_dos_url(file_uuid)
+                entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
             else:
                 return
         else:
-            entity[basename + DOS_URL_ATTRIBUTE_SUFFIX] = _create_dos_url(file_uuid)
+            entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
 
 def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samples, known_pairs, deferred_file_uuids):
     
@@ -789,17 +783,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
 
         elif num_associated_samples == 2:
-            if program == GDC_ProgramName.CPTAC and data_category != GDC_DataCategory.SNV:
-                # Within the CPTAC program, if a given specimen did not have enough material for proteomics or 
-                # genomics, multiple specimens or cores from a given patient are being combined to get 
-                # sufficient material. 
-                case_id = _add_to_knowncases(cases[0], known_cases)
-                sample_id, _pwd = _add_pooled_sample_to_knownsamples(samples[0], samples[1], case_id, known_samples)
-                _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename,
-                                    data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
-
-            else:
-                
+            if data_category == GDC_DataCategory.SNV or data_category == GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION:
                 case_id = _add_to_knowncases(cases[0], known_cases)
                 sample1_id, sample1_type_tn = _add_to_knownsamples(samples[0], case_id, known_samples)
                 sample2_id, sample2_type_tn = _add_to_knownsamples(samples[1], case_id, known_samples)
@@ -814,8 +798,17 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
                     pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
                     _add_file_attribute(gdc_api_root, pair_id, known_pairs[pair_id], file_uuid, filename,
                                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
-        elif num_associated_samples > 2 and num_associated_samples <=4:
-            if program == GDC_ProgramName.CPTAC and data_category == GDC_DataCategory.SNV:
+            else:
+                    # Within some programs (e.g., CPTAC), if a given specimen did not have enough material for genomics analysis
+                    # multiple specimens or cores from a given patient are being combined to get 
+                    # sufficient material. 
+                    case_id = _add_to_knowncases(cases[0], known_cases)
+                    sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, samples, case_id, known_samples)
+                    _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename,
+                                        data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
+
+        elif num_associated_samples > 2: 
+            if program == GDC_ProgramName.CPTAC and (data_category == GDC_DataCategory.SNV or data_category == GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION):
                 # Within the CPTAC program, if a given specimen did not have enough material for proteomics or 
                 # genomics, multiple specimens or cores from a given patient are being combined to get 
                 # sufficient material. 
@@ -831,21 +824,21 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
                         normal_samples.append(sample)
                     else:
                         na_samples.append(sample)
-                if len(tumor_samples)== 2:
-                    tumor_sample_id, _pwd = _add_pooled_sample_to_knownsamples(tumor_samples[0], tumor_samples[1], case_id, known_samples)
-                elif len(tumor_samples) == 1:
-                    tumor_sample_id, _pwd = _add_to_knownsamples(tumor_samples[0], case_id, known_samples)
+                if len(tumor_samples) >= 1:
+                    if len(tumor_samples) == 1:
+                        tumor_sample_id, _pwd = _add_to_knownsamples(tumor_samples[0], case_id, known_samples)
+                    else:
+                        tumor_sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, tumor_samples, case_id, known_samples)
                 else:
-                    print('issue with tumor samples, number of tumor samples = {0}'.format(len(tumor_samples)))
-                    raise ValueError(file_uuid, filename, data_category)
-                    
+                    print('issue with tumor samples, number of tumor samples = 0')
 
-                if len(normal_samples) == 2:
-                    normal_sample_id, _pwd = _add_pooled_sample_to_knownsamples(normal_samples[0], normal_samples[1], case_id, known_samples)
-                elif len(normal_samples) == 1:
-                    normal_sample_id, _pwd = _add_to_knownsamples(normal_samples[0], case_id, known_samples)
+                if len(normal_samples) >= 1:
+                    if len(normal_samples) == 1:
+                        normal_sample_id, _pwd = _add_to_knownsamples(normal_samples[0], case_id, known_samples)
+                    else:
+                        normal_sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, normal_samples, case_id, known_samples)
                 else:
-                    print('issue with normal samples, number of normal samples = {0}'.format(len(normal_samples)))
+                    print('issue with normal samples, number of normal samples = 0')
                     raise ValueError(file_uuid, filename, data_category)
 
                 pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
@@ -853,9 +846,10 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
                                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
 
             else:
-            # file associated with more than four samples from a single case
-            # not sure how to process this...don't believe there are any such files in GDC
-                raise ValueError(file_uuid, filename, data_category)
+                case_id = _add_to_knowncases(cases[0], known_cases)
+                sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, samples, case_id, known_samples)
+                _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename,
+                                    data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
 
     else:
         # file associated with multiple cases
