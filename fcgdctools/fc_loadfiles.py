@@ -190,34 +190,40 @@ class SampleType:
 SAMPLE_TYPE = SampleType()
 
 class MetadataRetriever():
-    def __init__(self, gdc_api_root, fields):
-        self.gdc_api_root = gdc_api_root
+    def __init__(self, api_endpoint, fields):
+        self.gdc_api_root = GDC_API_ROOT
         self.fields = fields
+        self.api_endpoint = api_endpoint
 
-    def get_metadata(self, file_uuid):
-        url = "{0}/files/{1}?fields={2}".format(self.gdc_api_root, file_uuid, self.fields)
+    def get_metadata(self, uuid):
+        url = "{0}/{1}/{2}?fields={3}".format(self.gdc_api_root, self.api_endpoint, uuid, self.fields)
         #debug
         #print('url: {0}'.format(url))
         response = requests.get(url, headers=None, timeout=5)
         responseDict = response.json()
         return responseDict['data']
 
-class CaseMetadataRetriever(MetadataRetriever):
-    def __init__(self, gdc_api_root):
-        fields = "cases.case_id,cases.submitter_id,cases.project.project_id"
-        MetadataRetriever.__init__(self, gdc_api_root, fields)
+class FileCaseMetadataRetriever(MetadataRetriever):
+    def __init__(self):
+        fields = "cases.case_id,cases.submitter_id,cases.project.project_id,cases.tissue_source_site"
+        MetadataRetriever.__init__(self, 'files', fields)
 
-class CaseSampleMetadataRetriever(MetadataRetriever):
-    def __init__(self, gdc_api_root):
+class FileCaseSampleMetadataRetriever(MetadataRetriever):
+    def __init__(self):
         fields = "cases.case_id,cases.submitter_id,cases.project.project_id"
         fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id,cases.samples.sample_type,cases.samples.tissue_type"
         fields = fields + ",cases.samples.portions.analytes.aliquots.submitter_id"
-        MetadataRetriever.__init__(self, gdc_api_root, fields)
+        MetadataRetriever.__init__(self, 'files', fields)
 
 class FileMetadataRetriever(MetadataRetriever):
-    def __init__(self, gdc_api_root):
+    def __init__(self):
         fields = "data_category,data_type,data_format,access,experimental_strategy,analysis.workflow_type,cases.project.program.name"
-        MetadataRetriever.__init__(self, gdc_api_root, fields)
+        MetadataRetriever.__init__(self, 'files', fields)
+
+class CaseMetadataRetriever(MetadataRetriever):
+    def __init__(self):
+        fields = "primary_site"
+        MetadataRetriever.__init__(self, 'cases', fields)
         
 SEPARATOR = '/'
 DRS_URL_ATTRIBUTE_SUFFIX = "drs_url"
@@ -238,7 +244,12 @@ def _add_to_knowncases(case_metadata, known_cases):
     if case_id not in known_cases:
         submitter_id = case_metadata['submitter_id']
         project_id = case_metadata['project']['project_id']
-        new_case = {'submitter_id' : submitter_id, 'project_id' : project_id}
+
+        caseMetadataRetriever = CaseMetadataRetriever()
+        caseMetadata = caseMetadataRetriever.get_metadata(case_id)
+        primary_site = caseMetadata.get('primary_site')
+
+        new_case = {'submitter_id' : submitter_id, 'project_id' : project_id, 'primary_site' : primary_site}
         known_cases[case_id] = new_case
     return case_id
 
@@ -513,7 +524,7 @@ def _pick_target_aliquot_pair(aliquot_pair_1, aliquot_pair_2):
         print("WARNING: aliquot ids are identical, unable to make rational choice")
         return aliquot_pair_1
 
-def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, name1, uuid2, name2):
+def _resolve_collision(data_category, data_type, program, uuid1, name1, uuid2, name2):
 
     # NOTE: we chose not to employ the created_datetime or updated_datetime fields in 
     # our decision logic.  From what we can tell, neither should be used to make a selection between 
@@ -567,7 +578,7 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
         (data_category in GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION)):
 
         file_fields = "cases.samples.sample_type,cases.samples.portions.analytes.aliquots.submitter_id,cases.samples.sample_type_id"
-        meta_retriever = MetadataRetriever(gdc_api_root, file_fields)
+        meta_retriever = MetadataRetriever('files', file_fields)
 
         data1 = meta_retriever.get_metadata(uuid1)
         samples_list1 = data1['cases'][0]['samples']
@@ -614,7 +625,7 @@ def _resolve_collision(gdc_api_root, data_category, data_type, program, uuid1, n
     # Here we handle other file types that are associated with single sample.
     else:
         file_fields = "cases.project.program.name,cases.samples.portions.analytes.aliquots.submitter_id"
-        meta_retriever = MetadataRetriever(gdc_api_root, file_fields)
+        meta_retriever = MetadataRetriever('files', file_fields)
 
         data1 = meta_retriever.get_metadata(uuid1)
         data2 = meta_retriever.get_metadata(uuid2)
@@ -653,7 +664,7 @@ def _create_drs_url(file_uuid):
 def _get_file_uuid_from_drs_url(drs_url):
     return drs_url.partition('drs://dataguids.org/')[2]
 
-def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
+def _add_file_attribute(entity_id, entity, file_uuid, filename,
                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program):
     # I needed to insert some special-case processing for image data files
     # this probably isn't the cleanest way to handle it, but good enough for now
@@ -700,7 +711,7 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
             print("new file: {0}/{1}".format(file_uuid, filename))
             print("existing file: {0}/{1}".format(existing_uuid, existing_filename))
             
-            chosen_uuid, chosen_filename = _resolve_collision(gdc_api_root, data_category, data_type, program,
+            chosen_uuid, chosen_filename = _resolve_collision(data_category, data_type, program,
                                                               file_uuid, filename, existing_uuid, existing_filename)
             print("chosen file is: {0}/{1}".format(chosen_uuid, chosen_filename))
 
@@ -711,13 +722,13 @@ def _add_file_attribute(gdc_api_root, entity_id, entity, file_uuid, filename,
         else:
             entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
 
-def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samples, known_pairs, deferred_file_uuids):
+def get_file_metadata(file_uuid, filename, known_cases, known_samples, known_pairs, deferred_file_uuids):
     
     pp = pprint.PrettyPrinter()
 
     # get from GDC the data file's category, type, access type, format, experimental strategy,
     # analysis workflow type
-    fileMetadataRetriever = FileMetadataRetriever(gdc_api_root)
+    fileMetadataRetriever = FileMetadataRetriever()
     responseDict = fileMetadataRetriever.get_metadata(file_uuid)
     
     try:
@@ -745,19 +756,19 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
 
     if data_category in set([GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN]): 
         if data_type == GDC_DataType.SLIDE_IMAGE:
-            metadataRetriever = CaseSampleMetadataRetriever(gdc_api_root)            
+            fileMetadataRetriever = FileCaseSampleMetadataRetriever()            
         else:
-            metadataRetriever = CaseMetadataRetriever(gdc_api_root)
+            fileMetadataRetriever = FileCaseMetadataRetriever()
     else:
-        metadataRetriever = CaseSampleMetadataRetriever(gdc_api_root)
+        fileMetadataRetriever = FileCaseSampleMetadataRetriever()
 
-    metadata = metadataRetriever.get_metadata(file_uuid)
+    fileMetadata = fileMetadataRetriever.get_metadata(file_uuid)
 
     #debug
     #print('metadata:')
-    #pp.pprint(metadata)
+    #pp.pprint(fileMetadata)
 
-    cases = metadata['cases']
+    cases = fileMetadata['cases']
 
     num_associated_cases = len(cases)
     assert num_associated_cases > 0, file_uuid
@@ -774,12 +785,12 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
     if num_associated_cases == 1:
         if num_associated_samples == 0:
             case_id = _add_to_knowncases(cases[0], known_cases)
-            _add_file_attribute(gdc_api_root, case_id, known_cases[case_id], file_uuid, filename,
+            _add_file_attribute(case_id, known_cases[case_id], file_uuid, filename,
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
         elif num_associated_samples == 1:
             case_id = _add_to_knowncases(cases[0], known_cases)
             sample_id, _ = _add_to_knownsamples(samples[0], case_id, known_samples)
-            _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename,
+            _add_file_attribute(sample_id, known_samples[sample_id], file_uuid, filename,
                                 data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
 
         elif num_associated_samples == 2:
@@ -796,7 +807,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
                     normal_sample_id = sample1_id
 
                     pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
-                    _add_file_attribute(gdc_api_root, pair_id, known_pairs[pair_id], file_uuid, filename,
+                    _add_file_attribute(pair_id, known_pairs[pair_id], file_uuid, filename,
                                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
             else:
                     # Within some programs (e.g., CPTAC), if a given specimen did not have enough material for genomics analysis
@@ -804,7 +815,7 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
                     # sufficient material. 
                     case_id = _add_to_knowncases(cases[0], known_cases)
                     sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, samples, case_id, known_samples)
-                    _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename,
+                    _add_file_attribute(sample_id, known_samples[sample_id], file_uuid, filename,
                                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
 
         elif num_associated_samples > 2: 
@@ -842,13 +853,13 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
                     raise ValueError(file_uuid, filename, data_category)
 
                 pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
-                _add_file_attribute(gdc_api_root, pair_id, known_pairs[pair_id], file_uuid, filename,
+                _add_file_attribute(pair_id, known_pairs[pair_id], file_uuid, filename,
                                         data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
 
             else:
                 case_id = _add_to_knowncases(cases[0], known_cases)
                 sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, samples, case_id, known_samples)
-                _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename,
+                _add_file_attribute(sample_id, known_samples[sample_id], file_uuid, filename,
                                     data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
 
     else:
@@ -864,10 +875,10 @@ def get_file_metadata(gdc_api_root, file_uuid, filename, known_cases, known_samp
 # can be overridden by setting all_cases to true, in which case a paricipant entity will be created for each
 # case a file is associated with.
 
-def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, known_cases, known_samples, all_cases):
+def process_deferred_file_uuid(file_uuid, filename, known_cases, known_samples, all_cases):
     
     # get data file's name, category, type, access, format experimental strategy, workflow type
-    fileMetadataRetriever = FileMetadataRetriever(gdc_api_root)
+    fileMetadataRetriever = FileMetadataRetriever()
     responseDict = fileMetadataRetriever.get_metadata(file_uuid)
 
     data_category = responseDict['data_category']
@@ -900,13 +911,13 @@ def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, known_cases, k
         workflow_type = None
         
     if data_category == GDC_DataCategory.CLINICAL or data_category == GDC_DataCategory.BIOSPECIMEN:
-        metadataRetriever = CaseMetadataRetriever(gdc_api_root)
+        fileMetadataRetriever = FileCaseMetadataRetriever()
     else:
-        metadataRetriever = CaseSampleMetadataRetriever(gdc_api_root)
+        fileMetadataRetriever = FileCaseSampleMetadataRetriever()
 
-    metadata = metadataRetriever.get_metadata(file_uuid)
+    filedMmetadata = fileMetadataRetriever.get_metadata(file_uuid)
 
-    cases = metadata['cases']
+    cases = fileMetadata['cases']
     num_associated_cases = len(cases)
     assert num_associated_cases > 1, file_uuid
 
@@ -920,11 +931,11 @@ def process_deferred_file_uuid(gdc_api_root, file_uuid, filename, known_cases, k
                 for sample in samples:
                     sample_id = sample['sample_id']
                     if sample_id in known_samples:
-                        _add_file_attribute(gdc_api_root, sample_id, known_samples[sample_id], file_uuid, filename,
+                        _add_file_attribute(sample_id, known_samples[sample_id], file_uuid, filename,
                                             data_category, data_type, data_format, experimental_strategy, workflow_type, access, program)
             else:
                 # associated with multiple cases only
-                _add_file_attribute(gdc_api_root, case_id, known_cases[case_id], file_uuid, filename,
+                _add_file_attribute(case_id, known_cases[case_id], file_uuid, filename,
                                     data_category, data_type, data_format,experimental_strategy, workflow_type, access, program)
 
 
@@ -1074,8 +1085,6 @@ def main():
 
     manifestFileList = _read_manifestFile(manifestFile)
 
-    gdc_api_root = GDC_API_ROOT
-
     for i, item in enumerate(manifestFileList):
 
         file_uuid = item['id']
@@ -1087,7 +1096,7 @@ def main():
 
         for attempt in range(5):
             try:
-                get_file_metadata(gdc_api_root, file_uuid, filename, cases, samples, 
+                get_file_metadata(file_uuid, filename, cases, samples, 
                                   pairs, deferred_file_uuids)
                 break
             except (KeyboardInterrupt, SystemExit):
@@ -1113,7 +1122,7 @@ def main():
 
         for attempt in range(5):
             try:
-                process_deferred_file_uuid(gdc_api_root, file_uuid, filename, cases, samples, args.all_cases)
+                process_deferred_file_uuid(file_uuid, filename, cases, samples, args.all_cases)
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as x:
