@@ -591,13 +591,13 @@ def _resolve_collision(data_category, data_type, program, uuid1, name1, uuid2, n
          data_type in GDC_DataType.LEGACY_SIMPLE_NUCLEOTIDE_VARIATION)):
 
         file_fields = "cases.samples.sample_type,cases.samples.portions.analytes.aliquots.submitter_id,cases.samples.sample_type_id"
-        meta_retriever = MetadataRetriever('files', file_fields)
+        meta_retriever = MetadataRetriever('files', file_fields, gdc_api_root)
 
         data1 = meta_retriever.get_metadata(uuid1)
         samples_list1 = data1['cases'][0]['samples']
         assert len(samples_list1) == 2
         for s in samples_list1:
-            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s['tissue_type'], s['sample_type'], s['sample_type_id'])
+            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s.get('tissue_type'), s.get('sample_type'), s.get('sample_type_id'))
             if sample_type_tn == SAMPLE_TYPE.TUMOR:
                 tumor_aliquot_submitter_id1 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
             else:
@@ -608,7 +608,7 @@ def _resolve_collision(data_category, data_type, program, uuid1, name1, uuid2, n
         samples_list2 = data2['cases'][0]['samples']
         assert len(samples_list2) == 2
         for s in samples_list2:
-            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s['tissue_type_'], s['sample_type'], s['sample_type_id'])
+            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s.get('tissue_type_'), s.get('sample_type'), s.get('sample_type_id'))
             if sample_type_tn == SAMPLE_TYPE.TUMOR:
                 tumor_aliquot_submitter_id2 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
             else:
