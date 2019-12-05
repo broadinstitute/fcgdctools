@@ -1009,7 +1009,7 @@ def create_samples_file(samples, manifestFileBasename):
     sample_sets_membership_filename = manifestFileBasename + '_sample_sets_membership.tsv'
     with open(samples_filename, 'w') as samplesFile, open(sample_sets_membership_filename, 'w') as membershipFile:
         
-        fieldnames = ['entity:sample_id', 'participant_id', 'submitter_id', 'sample_type_code', 'sample_type', 'tissue_type' ] + attribute_names
+        fieldnames = ['entity:sample_id', 'participant', 'submitter_id', 'sample_type_code', 'sample_type', 'tissue_type' ] + attribute_names
         sample_writer = csv.DictWriter(samplesFile, fieldnames=fieldnames, delimiter='\t')
         sample_writer.writeheader()
 
@@ -1018,7 +1018,7 @@ def create_samples_file(samples, manifestFileBasename):
         membership_writer.writeheader()
         
         for sample_id, sample in samples.items():
-            entity_row = {'entity:sample_id' : sample_id, 'participant_id': sample['case_id'],
+            entity_row = {'entity:sample_id' : sample_id, 'participant': sample['case_id'],
                           'submitter_id' : sample['submitter_id'],
                           'sample_type_code' : SAMPLE_TYPE.getLetterCode(sample['sample_type_id']) if sample['sample_type_id'] is not None else '__DELETE__',
                           'sample_type' : sample['sample_type'] if sample['sample_type'] is not None else '__DELETE__',
@@ -1044,7 +1044,7 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
     pairs_filename = manifestFileBasename + '_pairs.tsv'
     pair_sets_membership_filename = manifestFileBasename + '_pair_sets_membership.tsv'
     with open(pairs_filename, 'w') as pairsFile, open(pair_sets_membership_filename, 'w') as membershipFile:
-        fieldnames = ['entity:pair_id', 'participant_id', 'case_sample_id', 'control_sample_id',
+        fieldnames = ['entity:pair_id', 'participant', 'case_sample', 'control_sample',
                     'tumor_submitter_id', 'normal_submitter_id',
                     'tumor_type', 'normal_type'] + attribute_names
         pairs_writer = csv.DictWriter(pairsFile, fieldnames=fieldnames, delimiter='\t')
@@ -1059,9 +1059,9 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
             tumor_submitter_id = samples[pair['tumor']]['submitter_id']
             normal_submitter_id = samples[pair['normal']]['submitter_id']
             entity_row = {'entity:pair_id' : pair_id,
-                          'participant_id' : samples[pair['tumor']]['case_id'],
-                          'case_sample_id' : pair['tumor'],
-                          'control_sample_id' : pair['normal'],
+                          'participant' : samples[pair['tumor']]['case_id'],
+                          'case_sample' : pair['tumor'],
+                          'control_sample' : pair['normal'],
                           'tumor_submitter_id' : tumor_submitter_id,
                           'normal_submitter_id' : normal_submitter_id,
                           'tumor_type' : SAMPLE_TYPE.getLetterCode(samples[pair['tumor']]['sample_type_id']),
