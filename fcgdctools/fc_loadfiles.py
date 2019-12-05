@@ -236,6 +236,16 @@ class CaseMetadataRetriever(MetadataRetriever):
         fields = "primary_site"
         MetadataRetriever.__init__(self, 'cases', fields, gdc_api_root)
         
+class IndexFileUuidRetriever():
+    def __init__(self, gdc_api_root):
+        self.gdc_api_root
+
+    def get_index_uuid(self, bam_uuid):
+        url = "{0}/files/{1}?expand=index_files".format(self.gdc_api_root, bam_uuid)
+        response = requests.get(url, headers=None, timeout=5)
+        responseDict = response.json()
+        return responseDict['data']
+       
 SEPARATOR = '/'
 DRS_URL_ATTRIBUTE_SUFFIX = "drs_url"
 
@@ -728,12 +738,24 @@ def _add_file_attribute(entity_id, entity, file_uuid, filename,
                                                               file_uuid, filename, existing_uuid, existing_filename, gdc_api_root)
             print("chosen file is: {0}/{1}".format(chosen_uuid, chosen_filename))
 
+
             if chosen_uuid == file_uuid:
                 entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
+                if data_format == 'bam':
+                    bai_basename = basename.replace('__bam__', '__bai__')
+                    indexFileUuidRetriever = IndexFileUuidRetriever(gdc_api_root))
+                    bai_uuid = indexFileUuidRetriever.get_index_uuid(file_uuid)
+                    entity[bai_basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(bai_uuid)
+
             else:
                 return
         else:
             entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
+            if data_format == 'bam':
+                bai_basename = basename.replace('__bam__', '__bai__')
+                indexFileUuidRetriever = IndexFileUuidRetriever(gdc_api_root))
+                bai_uuid = indexFileUuidRetriever.get_index_uuid(file_uuid)
+                entity[bai_basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(bai_uuid)
 
 def get_file_metadata(file_uuid, filename, known_cases, known_samples, known_pairs, deferred_file_uuids, gdc_api_root):
     
@@ -756,7 +778,6 @@ def get_file_metadata(file_uuid, filename, known_cases, known_samples, known_pai
         print("SKIPPING FILE: file uuid = {0}, file name = {1}".format(file_uuid, filename))
         return
     
-          
     if 'experimental_strategy' in responseDict:
         experimental_strategy = responseDict['experimental_strategy']
     else: 
@@ -779,8 +800,6 @@ def get_file_metadata(file_uuid, filename, known_cases, known_samples, known_pai
     if data_type in set([GDC_DataType.LEGACY_TISSUE_SLIDE_IMAGE, GDC_DataType.LEGACY_DIAGNOSTIC_IMAGE]):
         fileMetadataRetriever = FileCaseSampleMetadataRetriever(gdc_api_root)
 
-
-    fileMetadata = fileMetadataRetriever.get_metadata(file_uuid)
 
     #debug
     #print('metadata:')
