@@ -743,7 +743,9 @@ def _add_file_attribute(entity_id, entity, file_uuid, filename,
 
             if chosen_uuid == file_uuid:
                 entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
-                if data_format == 'BAM':
+                print("experimental strategy: {0}".format(experimental_strategy))
+                # GDC does not provide index files for RNA-Seq BAMs
+                if data_format == 'BAM'and experimental_strategy != 'RNA-Seq':
                     bai_basename = basename.replace('__bam__', '__bai__')
                     indexFileUuidRetriever = IndexFileUuidRetriever(gdc_api_root)
                     bai_uuid = indexFileUuidRetriever.get_index_uuid(file_uuid)
@@ -753,7 +755,9 @@ def _add_file_attribute(entity_id, entity, file_uuid, filename,
                 return
         else:
             entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
-            if data_format == 'BAM':
+
+            # GDC does not provide index files for RNA-Seq BAMs
+            if data_format == 'BAM'and experimental_strategy != 'RNA-Seq':
                 bai_basename = basename.replace('__bam__', '__bai__')
                 indexFileUuidRetriever = IndexFileUuidRetriever(gdc_api_root)
                 bai_uuid = indexFileUuidRetriever.get_index_uuid(file_uuid)
