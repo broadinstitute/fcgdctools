@@ -28,6 +28,9 @@ Or download the source and install with setup.py:
 Note that if you are installing to a protected location, you may need to preface the `python setup.py install` command with `sudo`.  
 
 ## Description
+(Note: The following description is a bit out of data and does not accurately reflect the current functionalty on the master branch.  When I have time I'll 
+update this.)
+
 Following installation you should be able to run the `genFcWsLoadFiles` command from the command line
 
 ```
