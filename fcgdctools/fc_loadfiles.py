@@ -863,7 +863,7 @@ def get_file_metadata(drs_flag, file_uuid, filename, file_size, known_cases,
         is_ffpe       = False
         if data_category not in {GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN}:
             for sample in responseDict['cases'][0]['samples']:
-                if 'is_ffpe' in sample:
+                if 'is_ffpe' in sample and sample['is_ffpe'] is not None:
                     is_ffpe |= sample['is_ffpe']
                 if 'portions' in sample:
                     for portion in sample['portions']:
@@ -1032,7 +1032,7 @@ def process_deferred_file_uuid(drs_flag, file_uuid, filename, file_size, known_c
         is_ffpe = False
         if data_category not in {GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN}:
             for sample in responseDict['cases'][0]['samples']:
-                if 'is_ffpe' in sample:
+                if 'is_ffpe' in sample and sample['is_ffpe'] is not None:
                     is_ffpe |= sample['is_ffpe']
                 if 'portions' in sample:
                     for portion in sample['portions']:
