@@ -15,6 +15,7 @@ DEFERRED_FILE_NUM_OF_CASES = dict()
 GDC_API_ROOT = "https://api.gdc.cancer.gov"
 GDC_AWG_API_ROOT = "https://api.awg.gdc.cancer.gov"
 GDC_LEGACY_API_ROOT = "https://api.gdc.cancer.gov/legacy"
+DRS_ROOT = "drs://dg.4DFC:"
 
 #program
 class GDC_ProgramName:
@@ -717,13 +718,13 @@ def _resolve_collision(data_category, data_type, program, uuid1, name1, uuid2, n
 
 
 def _create_drs_url(file_uuid):
-    return 'drs://dataguids.org/{0}'.format(file_uuid)
+    return '{}{}'.format(DRS_ROOT, file_uuid)
 
 def _create_gdc_url(api_root, file_uuid):
     return api_root + '/data/' + file_uuid
 
 def _get_file_uuid_from_drs_url(drs_url):
-    return drs_url.partition('drs://dataguids.org/')[2]
+    return drs_url.partition(DRS_ROOT)[2]
 
 def _get_file_uuid_from_gdc_url(api_root, gdc_url):
     return gdc_url.partition(api_root + '/data/')[2]
