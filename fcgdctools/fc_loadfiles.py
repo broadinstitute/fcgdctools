@@ -24,6 +24,7 @@ class GDC_ProgramName:
     FM = 'FM'
     CPTAC = 'CPTAC'
     CTSP = 'CTSP'
+    ALCHEMIST = 'ALCHEMIST'
 
 #data categories                                                                                                                   
 class GDC_DataCategory:
