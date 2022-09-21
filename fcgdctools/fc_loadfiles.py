@@ -1233,9 +1233,10 @@ def main(argv=None):
     parser.add_argument("-c", "--all_cases", help="create participant entities for all referenced cases", action="store_true")
     parser.add_argument("-a", "--api", choices=['main', 'legacy', 'awg'], default='main', help="Select API endpoint. awg requires a valid GDC download token.")
     parser.add_argument("-t", "--token", type=argparse.FileType('r'), help="GDC download token to access controlled APIs")
+    parser.add_argument("-d", "--disable_drs", help="disable DRS URI", action="store_true")
     args = parser.parse_args(argv)
     
-    drs_flag = True
+    drs_flag = not args.disable_drs
 
     gdc_api_root = GDC_API_ROOT
     if args.api == 'legacy':

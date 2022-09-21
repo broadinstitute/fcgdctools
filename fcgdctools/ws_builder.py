@@ -46,7 +46,7 @@ def create_method_configs(billing_project, ws_name, attr_list, auth_domain, awg_
 
     method_namespace = "getzlab"
     file_downloader_method = "gdc_api_file_download"
-    file_downloader_method_snapshot_id = 3
+    file_downloader_method_snapshot_id = 4
 
     for attr in attr_list:
         
