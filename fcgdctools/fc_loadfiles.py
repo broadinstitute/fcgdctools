@@ -804,9 +804,13 @@ def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
                 _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root)
                 print("experimental strategy: {0}".format(experimental_strategy))
                 # GDC does not provide index files for RNA-Seq BAMs
-                if data_format == 'BAM'and experimental_strategy != 'RNA-Seq':
+                if data_format == 'BAM'and experimental_strategy not in ('miRNA-Seq', 'RNA-Seq'):
                     bai_basename = basename.replace('__bam__', '__bai__')
-                    indexFileMetadataRetriever = IndexFileMetadataRetriever(file_uuid, gdc_api_root, token)
+                    try:
+                        indexFileMetadataRetriever = IndexFileMetadataRetriever(file_uuid, gdc_api_root, token)
+                    except KeyError:
+                        print("WARNING: No index file found for {}, skipping.".format(filename))
+                        return
                     bai_uuid = indexFileMetadataRetriever.get_index_uuid()
                     bai_name = indexFileMetadataRetriever.get_index_name()
                     bai_size = indexFileMetadataRetriever.get_index_size()
@@ -818,9 +822,13 @@ def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
             _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root)
 
             # GDC does not provide index files for RNA-Seq BAMs
-            if data_format == 'BAM'and experimental_strategy != 'RNA-Seq':
+            if data_format == 'BAM'and experimental_strategy not in ('miRNA-Seq', 'RNA-Seq'):
                 bai_basename = basename.replace('__bam__', '__bai__')
-                indexFileMetadataRetriever = IndexFileMetadataRetriever(file_uuid, gdc_api_root, token)
+                try:
+                    indexFileMetadataRetriever = IndexFileMetadataRetriever(file_uuid, gdc_api_root, token)
+                except KeyError:
+                    print("WARNING: No index file found for {}, skipping.".format(filename))
+                    return
                 bai_uuid = indexFileMetadataRetriever.get_index_uuid()
                 bai_name = indexFileMetadataRetriever.get_index_name()
                 bai_size = indexFileMetadataRetriever.get_index_size()
