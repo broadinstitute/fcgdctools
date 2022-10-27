@@ -65,6 +65,7 @@ class GDC_DataType:
     COPY_NUMBER_SEGMENT = 'Copy Number Segment'
     MASKED_COPY_NUMBER_SEGMENT = 'Masked Copy Number Segment'
     GENE_LEVEL_COPY_NUMBER = 'Gene Level Copy Number'
+    ALLELE_SPECIFIC_COPY_NUMBER_SEGMENT = 'Allele-specific Copy Number Segment'
 
     #data types associated with Clinical data category                                                                             
     CLINICAL_SUPPLEMENT = "Clinical Supplement"
@@ -138,7 +139,9 @@ WORKFLOW_ABBREVIATIONS = {
         'MuTect2 Variant Aggregation and Masking' : 'MuTect2AggrMask',
         'SomaticSniper Variant Aggregation and Masking' : 'SomSnipAggrMask',
         'VarScan2 Variant Aggregation and Masking' : 'VarScan2AggrMask',
-        'FoundationOne Variant Aggregation and Masking' : 'F1AggrMask'}
+        'FoundationOne Variant Aggregation and Masking' : 'F1AggrMask',
+        'ASCAT2' : 'ASCAT2',
+        'AscatNGS' : 'AscatNGS'}
 
 
 WORKFLOW = DataSource(WORKFLOW_ABBREVIATIONS)
@@ -940,7 +943,7 @@ def get_file_metadata(drs_flag, file_uuid, filename, file_size, known_cases,
 
         elif num_associated_samples == 2:
             if data_category in {GDC_DataCategory.SNV, GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION, GDC_DataCategory.SV} or \
-               (data_category == GDC_DataCategory.COPY_NUMBER_VARIATION and experimental_strategy == "WGS"):
+               (data_category == GDC_DataCategory.COPY_NUMBER_VARIATION and (experimental_strategy == "WGS" or workflow_type == "ASCAT2")):
                 case_id = _add_to_knowncases(cases[0], known_cases, gdc_api_root, token)
                 sample1_id, sample1_type_tn = _add_to_knownsamples(samples[0], case_id, known_samples)
                 sample2_id, sample2_type_tn = _add_to_knownsamples(samples[1], case_id, known_samples)
