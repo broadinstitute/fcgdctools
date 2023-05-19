@@ -25,6 +25,7 @@ class GDC_ProgramName:
     CPTAC = 'CPTAC'
     CTSP = 'CTSP'
     ALCHEMIST = 'ALCHEMIST'
+    HCMI = 'HCMI'
 
 #data categories                                                                                                                   
 class GDC_DataCategory:
@@ -176,15 +177,18 @@ class SampleType:
                 '12' : ['Buccal Cell Normal', 'NBC', NORMAL],
                 '13' : ['EBV Immortalized Normal', 'NEBV', NORMAL],
                 '14' : ['Bone Marrow Normal', 'NBM', NORMAL],
-                '15' : ['sample type 15', '15SH', NA],
+                '15' : ['Fibroblasts From Bone Marrow Normal', 'NFB', NORMAL],
                 '16' : ['sample type 16', '16SH', NA],
                 '20' : ['Control Analyte', 'CELLC', NA],
-                '40' : ['Recurrent Blood Derived Normal - Peripheral Blood', 'TRB', NORMAL],
+                '31' : ['Neoplasms of Uncertain and Unknown Behavior', 'TNB', TUMOR],
+                '40' : ['Recurrent Blood Derived Cancer - Peripheral Blood', 'TRB', TUMOR],
                 '41' : ['Blood Derived Cancer - Bone Marrow, Post-treatment', 'TBD', TUMOR],
                 '42' : ['Blood Derived Cancer - Peripheral Blood, Post-treatement', 'TBD', TUMOR],
                 '50' : ['Cell Lines', 'CELL', NA],
                 '60' : ['Primary Xenograft Tissue', 'XP', NA],
                 '61' : ['Cell Line Derived Xenograft Tissue', 'XCL', NA],
+                '85' : ['Next Generation Cancer Model', 'TNGCM', TUMOR],
+                '86' : ['Expanded Next Generation Cancer Model', 'TXNGCM', TUMOR],
                 '99' : ['sample type 99', '99SH', NA]}
 
     GDC_TISSUE_TYPES = {'Tumor': TUMOR,
@@ -248,7 +252,7 @@ class FileCaseSampleMetadataRetriever(MetadataRetriever):
 
 class FileMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root, token=None):
-        fields = "data_category,data_type,data_format,access,experimental_strategy,analysis.workflow_type,cases.project.program.name,cases.samples.is_ffpe,cases.samples.portions.is_ffpe"
+        fields = "data_category,data_type,data_format,access,experimental_strategy,analysis.workflow_type,cases.project.program.name,cases.samples.is_ffpe,cases.samples.portions.is_ffpe,cases.samples.preservation_method"
         MetadataRetriever.__init__(self, 'files', fields, gdc_api_root, token)
 
 class CaseMetadataRetriever(MetadataRetriever):
@@ -877,6 +881,8 @@ def get_file_metadata(drs_flag, file_uuid, filename, file_size, known_cases,
             for sample in responseDict['cases'][0]['samples']:
                 if 'is_ffpe' in sample and sample['is_ffpe'] is not None:
                     is_ffpe |= sample['is_ffpe']
+                elif 'preservation_method' in sample and sample['preservation_method'] is not None and sample['preservation_method'].upper() != 'UNKNOWN':
+                    is_ffpe |= sample['preservation_method'].upper() == 'FFPE'
                 if 'portions' in sample:
                     for portion in sample['portions']:
                         is_ffpe |= portion['is_ffpe']
@@ -1046,6 +1052,8 @@ def process_deferred_file_uuid(drs_flag, file_uuid, filename, file_size, known_c
             for sample in responseDict['cases'][0]['samples']:
                 if 'is_ffpe' in sample and sample['is_ffpe'] is not None:
                     is_ffpe |= sample['is_ffpe']
+                elif 'preservation_method' in sample and sample['preservation_method'] is not None and sample['preservation_method'].upper() != 'UNKNOWN':
+                    is_ffpe |= sample['preservation_method'].upper() == 'FFPE'
                 if 'portions' in sample:
                     for portion in sample['portions']:
                         is_ffpe |= portion['is_ffpe']
