@@ -706,21 +706,22 @@ def _resolve_collision(data_category, data_type, experimental_strategy, program,
         print('aliquot name for {0}: {1}'.format(uuid1, aliquot_submitter_id1))
         print('aliquot name for {0}: {1}'.format(uuid2, aliquot_submitter_id2))
 
-        if data_category == GDC_DataCategory.SEQUENCING_READS and data1['mean_coverage'] != data2['mean_coverage']:
+        if data_category == GDC_DataCategory.SEQUENCING_READS:
             # Check if only one file name begins with the aliquot ID, indicating it's newer
             new1 = name1.startswith(aliquot_submitter_id1)
             new2 = name2.startswith(aliquot_submitter_id2)
             if new1 and not new2:
                 return uuid1, name1
-            elif new2 and not new1:
+            if new2 and not new1:
                 return uuid2, name2
-            # Select highest coverage BAM
-            print(f"Mean coverage for {uuid1}/{name1}: {data1['mean_coverage']}")
-            print(f"Mean coverage for {uuid2}/{name2}: {data2['mean_coverage']}")
-            if data1['mean_coverage'] > data2['mean_coverage']:
-                return uuid1, name1
-            else:
-                return uuid2, name2
+            if data1['mean_coverage'] != data2['mean_coverage']:
+                # Select highest coverage BAM
+                print(f"Mean coverage for {uuid1}/{name1}: {data1['mean_coverage']}")
+                print(f"Mean coverage for {uuid2}/{name2}: {data2['mean_coverage']}")
+                if data1['mean_coverage'] > data2['mean_coverage']:
+                    return uuid1, name1
+                else:
+                    return uuid2, name2
 
         if aliquot_submitter_id1 != aliquot_submitter_id2:
             if program == GDC_ProgramName.TCGA:
