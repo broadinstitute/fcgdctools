@@ -589,7 +589,7 @@ def _pick_target_aliquot_pair(aliquot_pair_1, aliquot_pair_2):
         print("WARNING: aliquot ids are identical, unable to make rational choice")
         return aliquot_pair_1
 
-def _resolve_collision(data_category, data_type, program, uuid1, name1, uuid2, name2, gdc_api_root, token):
+def _resolve_collision(data_category, data_type, experimental_strategy, program, uuid1, name1, uuid2, name2, gdc_api_root, token):
 
     # NOTE: we chose not to employ the created_datetime or updated_datetime fields in 
     # our decision logic.  From what we can tell, neither should be used to make a selection between 
@@ -691,7 +691,7 @@ def _resolve_collision(data_category, data_type, program, uuid1, name1, uuid2, n
 
     # Here we handle other file types that are associated with single sample.
     else:
-        file_fields = "cases.project.program.name,cases.samples.portions.analytes.aliquots.submitter_id"
+        file_fields = "mean_coverage,cases.project.program.name,cases.samples.portions.analytes.aliquots.submitter_id"
         meta_retriever = MetadataRetriever('files', file_fields, gdc_api_root, token)
 
         data1 = meta_retriever.get_metadata(uuid1)
@@ -699,6 +699,15 @@ def _resolve_collision(data_category, data_type, program, uuid1, name1, uuid2, n
 
         assert len(data1['cases'][0]['samples']) == 1, "more than one sample associated with file"
         assert len(data2['cases'][0]['samples']) == 1, "more than one sample associated with file"
+
+        if data_category == GDC_DataCategory.SEQUENCING_READS and data1['mean_coverage'] != data2['mean_coverage']:
+            # Select highest coverage BAM
+            print(f"Mean coverage for {uuid1}/{name1}: {data1['mean_coverage']}")
+            print(f"Mean coverage for {uuid2}/{name2}: {data2['mean_coverage']}")
+            if data1['mean_coverage'] > data2['mean_coverage']:
+                return uuid1, name1
+            else:
+                return uuid2, name2
 
         aliquot_submitter_id1 = data1['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
         aliquot_submitter_id2 = data2['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
@@ -709,7 +718,6 @@ def _resolve_collision(data_category, data_type, program, uuid1, name1, uuid2, n
         if aliquot_submitter_id1 != aliquot_submitter_id2:
             if program == GDC_ProgramName.TCGA:
                 chosen = _pick_tcga_submitter(aliquot_submitter_id1, aliquot_submitter_id2)
-
             elif program == GDC_ProgramName.TARGET:
                 chosen = _pick_target_submitter(aliquot_submitter_id1, aliquot_submitter_id2)
             else:
@@ -802,7 +810,7 @@ def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
             print("new file: {0}/{1}".format(file_uuid, filename))
             print("existing file: {0}/{1}".format(existing_uuid, existing_filename))
             
-            chosen_uuid, chosen_filename = _resolve_collision(data_category, data_type, program,
+            chosen_uuid, chosen_filename = _resolve_collision(data_category, data_type, experimental_strategy, program,
                                                               file_uuid, filename, existing_uuid, existing_filename, gdc_api_root, token)
             print("chosen file is: {0}/{1}".format(chosen_uuid, chosen_filename))
 
