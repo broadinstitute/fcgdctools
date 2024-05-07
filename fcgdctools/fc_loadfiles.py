@@ -1,12 +1,13 @@
-import csv
-import requests
 import argparse
-import pprint
+import csv
 import os.path
+import pprint
 import sys
 import time
 import traceback
 from math import ceil
+
+import requests
 
 UUID_TO_FILENAME = dict()
 
@@ -17,7 +18,8 @@ GDC_AWG_API_ROOT = "https://api.awg.gdc.cancer.gov"
 GDC_LEGACY_API_ROOT = "https://api.gdc.cancer.gov/legacy"
 DRS_ROOT = "drs://dg.4DFC:"
 
-#program
+
+# program
 class GDC_ProgramName:
     TARGET = 'TARGET'
     TCGA = 'TCGA'
@@ -27,13 +29,14 @@ class GDC_ProgramName:
     ALCHEMIST = 'ALCHEMIST'
     HCMI = 'HCMI'
 
-#data categories                                                                                                                   
+
+# data categories
 class GDC_DataCategory:
     SNV = "Simple Nucleotide Variation"
     TRANSCRIPTOME_PROFILING = "Transcriptome Profiling"
     BIOSPECIMEN = "Biospecimen"
-    RAW_SEQUENCING_DATA = "Raw Sequencing Data"    
-    COPY_NUMBER_VARIATION = "Copy Number Variation"    
+    RAW_SEQUENCING_DATA = "Raw Sequencing Data"
+    COPY_NUMBER_VARIATION = "Copy Number Variation"
     CLINICAL = "Clinical"
     DNA_METHYLATION = "DNA Methylation"
     COMBINED_NUCLEOTIDE_VARIATION = "Combined Nucleotide Variation"
@@ -41,34 +44,34 @@ class GDC_DataCategory:
     SV = "Somatic Structural Variation"
     LEGACY_SNV = "Simple nucleotide variation"
 
-#data types                                                                                                                        
+
+# data types
 class GDC_DataType:
-    
-    #associated with Simple Nucleotide Variation data category                                                                     
+    # associated with Simple Nucleotide Variation data category
     RAW_SIMPLE_SOMATIC_MUTATION = "Raw Simple Somatic Mutation"
     ANNOTATED_SOMATIC_MUTATION = "Annotated Somatic Mutation"
     AGGREGATED_SOMATIC_MUTATION = "Aggregated Somatic Mutation"
-    MASKED_SOMATIC_MUTATION = "Masked Somatic Mutation"  
-    
-    #associated with Transcriptome Profiling data category                                                                         
+    MASKED_SOMATIC_MUTATION = "Masked Somatic Mutation"
+
+    # associated with Transcriptome Profiling data category
     MIRNA_EXPRESSION_QUANTIFICATION = "miRNA Expression Quantification"
     ISOFORM_EXPRESSION_QUANTIFICATION = "Isoform Expression Quantification"
     GENE_EXPRESSION_QUANTIFICATION = "Gene Expression Quantification"
 
-    #associated with Biospecimen data category                                                                                     
+    # associated with Biospecimen data category
     BIOSPECIMEN_SUPPLEMENT = "Biospecimen Supplement"
     SLIDE_IMAGE = "Slide Image"
 
-    #associated with RAW Sequencing Data data category                                                                             
+    # associated with RAW Sequencing Data data category
     ALIGNED_READS = "Aligned Reads"
-    
-    #associated with Copy Number Variation data category                                                                           
+
+    # associated with Copy Number Variation data category
     COPY_NUMBER_SEGMENT = 'Copy Number Segment'
     MASKED_COPY_NUMBER_SEGMENT = 'Masked Copy Number Segment'
     GENE_LEVEL_COPY_NUMBER = 'Gene Level Copy Number'
     ALLELE_SPECIFIC_COPY_NUMBER_SEGMENT = 'Allele-specific Copy Number Segment'
 
-    #data types associated with Clinical data category                                                                             
+    # data types associated with Clinical data category
     CLINICAL_SUPPLEMENT = "Clinical Supplement"
 
     LEGACY_TISSUE_SLIDE_IMAGE = "Tissue slide image"
@@ -76,20 +79,22 @@ class GDC_DataType:
     LEGACY_PATHOLOGY_REPORT = "Pathology report"
     LEGACY_CLINICAL_DATA = "Clinical data"
     LEGACY_BIOSPECIMEN_DATA = "Biospecimen data"
-    
-    #associated with DNA Methylation data category                                                                                 
+
+    # associated with DNA Methylation data category
     METHYLATION_BETA_VALUE = "Methylation Beta Value"
-    
-    #associated with Combined Nucleotide Variation data category
+
+    # associated with Combined Nucleotide Variation data category
     RAW_CGI_VARIANT = "Raw CGI Variant"
 
-    LEGACY_SIMPLE_NUCLEOTIDE_VARIATON = "Simple nucleotide variation"
-    
-    #associated with Somatic Structural Variation data category
+    LEGACY_SIMPLE_NUCLEOTIDE_VARIATION = "Simple nucleotide variation"
+
+    # associated with Somatic Structural Variation data category
     STRUCTURAL_REARRANGEMENT = "Structural Rearrangement"
 
+
 class DataSource:
-    ABBREV_TRANSLATE_TABLE = ''.maketrans({'.' : '', '-' : '', ' ' : '', '_' :''})
+    ABBREV_TRANSLATE_TABLE = ''.maketrans({'.': '', '-': '', ' ': '', '_': ''})
+
     def __init__(self, abbreviations):
         self.abbreviations = abbreviations
 
@@ -97,65 +102,66 @@ class DataSource:
         if abbr in self.abbreviations:
             return self.abbreviations[abbr]
         else:
-            return abbr.translate(DataSource.ABBREV_TRANSLATE_TABLE)       
+            return abbr.translate(DataSource.ABBREV_TRANSLATE_TABLE)
+
 
 EXP_STRATEGY_ABBREVIATIONS = {
-        'WXS' : 'WXS',
-        'RNA-Seq' : 'RNAseq',
-        'Genotyping Array' : 'GeneArray',
-        'Targeted Sequencing' : 'TargetedSeq',
-        'miRNA-Seq' : 'miRNAseq',
-        'Tissue Slide': 'TissueSlide',
-        'Methylation Array' : 'MethArray',
-        'Diagnostic Slide' : 'DiagSlide',
-        'WGS': 'WGS'} 
+    'WXS': 'WXS',
+    'RNA-Seq': 'RNAseq',
+    'Genotyping Array': 'GeneArray',
+    'Targeted Sequencing': 'TargetedSeq',
+    'miRNA-Seq': 'miRNAseq',
+    'Tissue Slide': 'TissueSlide',
+    'Methylation Array': 'MethArray',
+    'Diagnostic Slide': 'DiagSlide',
+    'WGS': 'WGS'}
 
 EXP_STRATEGY = DataSource(EXP_STRATEGY_ABBREVIATIONS)
 
 WORKFLOW_ABBREVIATIONS = {
-        'DNACopy' : 'DNACopy',        
-        'BCGSC miRNA Profiling' : 'BCGSCmiRNA',
-        'BWA with Mark Duplicates and Cocleaning' : 'BWAMDupCoClean',
-        'FM Simple Somatic Mutation' : 'FMSimpleSomaticMutation',
-        'FoundationOne Annotation' : 'F1Annotation',
-        'Liftover' : 'Lift',
-        'STAR 2-Pass' : 'STAR2Pass',
-        'STAR 2-Pass Genome' : 'STAR2PassGenome',
-        'STAR 2-Pass Chimeric' : 'STAR2PassChimeric',
-        'STAR 2-Pass Transcriptome' : 'STAR2PassTranscriptome',
-        'HTSeq - Counts' : 'HTSeqCounts',
-        'HTSeq - FPKM' : 'HTSeqFPKM',
-        'HTSeq - FPKM-UQ' : 'HTSEQFPKMUQ',
-        'BWA-aln' : 'BWAaln',      
-        'SomaticSniper': 'SomSnip',
-        'SomaticSniper Annotation' : 'SomSnipAnnot',
-        'MuTect2' : 'MuTect2',
-        'MuTect2 Annotation' : 'MuTect2Annot',       
-        'VarScan2' : 'VarScan2',
-        'VarScan2 Annotation' : 'VarScan2Annot',    
-        'MuSE' : 'MuSE',
-        'MuSE Annotation' : 'MuSEAnnot',
-        'VCF LiftOver' : 'VCFLift',
-        'MuSE Variant Aggregation and Masking' : 'MuSEAggrMask',
-        'MuTect2 Variant Aggregation and Masking' : 'MuTect2AggrMask',
-        'SomaticSniper Variant Aggregation and Masking' : 'SomSnipAggrMask',
-        'VarScan2 Variant Aggregation and Masking' : 'VarScan2AggrMask',
-        'FoundationOne Variant Aggregation and Masking' : 'F1AggrMask',
-        'ASCAT2' : 'ASCAT2',
-        'AscatNGS' : 'AscatNGS'}
-
+    'DNACopy': 'DNACopy',
+    'BCGSC miRNA Profiling': 'BCGSCmiRNA',
+    'BWA with Mark Duplicates and Cocleaning': 'BWAMDupCoClean',
+    'FM Simple Somatic Mutation': 'FMSimpleSomaticMutation',
+    'FoundationOne Annotation': 'F1Annotation',
+    'Liftover': 'Lift',
+    'STAR 2-Pass': 'STAR2Pass',
+    'STAR 2-Pass Genome': 'STAR2PassGenome',
+    'STAR 2-Pass Chimeric': 'STAR2PassChimeric',
+    'STAR 2-Pass Transcriptome': 'STAR2PassTranscriptome',
+    'HTSeq - Counts': 'HTSeqCounts',
+    'HTSeq - FPKM': 'HTSeqFPKM',
+    'HTSeq - FPKM-UQ': 'HTSEQFPKMUQ',
+    'BWA-aln': 'BWAaln',
+    'SomaticSniper': 'SomSnip',
+    'SomaticSniper Annotation': 'SomSnipAnnot',
+    'MuTect2': 'MuTect2',
+    'MuTect2 Annotation': 'MuTect2Annot',
+    'VarScan2': 'VarScan2',
+    'VarScan2 Annotation': 'VarScan2Annot',
+    'MuSE': 'MuSE',
+    'MuSE Annotation': 'MuSEAnnot',
+    'VCF LiftOver': 'VCFLift',
+    'MuSE Variant Aggregation and Masking': 'MuSEAggrMask',
+    'MuTect2 Variant Aggregation and Masking': 'MuTect2AggrMask',
+    'SomaticSniper Variant Aggregation and Masking': 'SomSnipAggrMask',
+    'VarScan2 Variant Aggregation and Masking': 'VarScan2AggrMask',
+    'FoundationOne Variant Aggregation and Masking': 'F1AggrMask',
+    'ASCAT2': 'ASCAT2',
+    'AscatNGS': 'AscatNGS'}
 
 WORKFLOW = DataSource(WORKFLOW_ABBREVIATIONS)
 
 PLATFORM_ABBREVIATIONS = {
-        'Affymetrix SNP 6.0' : 'AffySNP6',
-        'Illumina' : 'Illum',
-        'Illumina Human Methylation 450' : 'IllumHuMeth450',
-        'Illumina Human Methylation 27' : 'IllumHuMeth27'}
+    'Affymetrix SNP 6.0': 'AffySNP6',
+    'Illumina': 'Illum',
+    'Illumina Human Methylation 450': 'IllumHuMeth450',
+    'Illumina Human Methylation 27': 'IllumHuMeth27'}
 
 PLATFORM = DataSource(PLATFORM_ABBREVIATIONS)
 
-# Sample Types                                                                                                                     
+
+# Sample Types
 # from https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/sample-type-codes                                              
 class SampleType:
     TUMOR = 'tumor'
@@ -164,32 +170,32 @@ class SampleType:
     NA = 'na'
     # this table needs updating - TARGET data had some unknown sample type ids                                                     
     GDC_SAMPLE_TYPE_IDS = {'01': ['Primary Solid Tumor', 'TP', TUMOR],
-                '02' : ['Recurrent Solid Tumor', 'TR', TUMOR],
-                '03' : ['Primary Blood Derived Cancer - Peripheral Blood', 'TB', TUMOR],
-                '04' : ['Recurrent Blood Derived Cancer - Bone Marrow', 'TRBM', TUMOR],
-                '05' : ['Additional - New Primary', 'TAP', TUMOR],
-                '06' : ['Metastic', 'TM', TUMOR],
-                '07' : ['Additional Metastic', 'TAM', TUMOR],
-                '08' : ['Human Tumor Original Cells', 'THOC', TUMOR],
-                '09' : ['Primary Blood Derived Cancer - Bone Marrow', 'TBM', TUMOR],
-                '10' : ['Blood Derived Normal', 'NB', NORMAL],
-                '11' : ['Solid Tissue Normal', 'NT', NORMAL],
-                '12' : ['Buccal Cell Normal', 'NBC', NORMAL],
-                '13' : ['EBV Immortalized Normal', 'NEBV', NORMAL],
-                '14' : ['Bone Marrow Normal', 'NBM', NORMAL],
-                '15' : ['Fibroblasts From Bone Marrow Normal', 'NFB', NORMAL],
-                '16' : ['sample type 16', '16SH', NA],
-                '20' : ['Control Analyte', 'CELLC', NA],
-                '31' : ['Neoplasms of Uncertain and Unknown Behavior', 'TNB', TUMOR],
-                '40' : ['Recurrent Blood Derived Cancer - Peripheral Blood', 'TRB', TUMOR],
-                '41' : ['Blood Derived Cancer - Bone Marrow, Post-treatment', 'TBMPT', TUMOR],
-                '42' : ['Blood Derived Cancer - Peripheral Blood, Post-treatement', 'TBPT', TUMOR],
-                '50' : ['Cell Lines', 'CELL', NA],
-                '60' : ['Primary Xenograft Tissue', 'XP', NA],
-                '61' : ['Cell Line Derived Xenograft Tissue', 'XCL', NA],
-                '85' : ['Next Generation Cancer Model', 'TNGCM', TUMOR],
-                '86' : ['Expanded Next Generation Cancer Model', 'TXNGCM', TUMOR],
-                '99' : ['sample type 99', '99SH', NA]}
+                           '02': ['Recurrent Solid Tumor', 'TR', TUMOR],
+                           '03': ['Primary Blood Derived Cancer - Peripheral Blood', 'TB', TUMOR],
+                           '04': ['Recurrent Blood Derived Cancer - Bone Marrow', 'TRBM', TUMOR],
+                           '05': ['Additional - New Primary', 'TAP', TUMOR],
+                           '06': ['Metastatic', 'TM', TUMOR],
+                           '07': ['Additional Metastatic', 'TAM', TUMOR],
+                           '08': ['Human Tumor Original Cells', 'THOC', TUMOR],
+                           '09': ['Primary Blood Derived Cancer - Bone Marrow', 'TBM', TUMOR],
+                           '10': ['Blood Derived Normal', 'NB', NORMAL],
+                           '11': ['Solid Tissue Normal', 'NT', NORMAL],
+                           '12': ['Buccal Cell Normal', 'NBC', NORMAL],
+                           '13': ['EBV Immortalized Normal', 'NEBV', NORMAL],
+                           '14': ['Bone Marrow Normal', 'NBM', NORMAL],
+                           '15': ['Fibroblasts From Bone Marrow Normal', 'NFB', NORMAL],
+                           '16': ['sample type 16', '16SH', NA],
+                           '20': ['Control Analyte', 'CELLC', NA],
+                           '31': ['Neoplasms of Uncertain and Unknown Behavior', 'TNB', TUMOR],
+                           '40': ['Recurrent Blood Derived Cancer - Peripheral Blood', 'TRB', TUMOR],
+                           '41': ['Blood Derived Cancer - Bone Marrow, Post-treatment', 'TBMPT', TUMOR],
+                           '42': ['Blood Derived Cancer - Peripheral Blood, Post-treatment', 'TBPT', TUMOR],
+                           '50': ['Cell Lines', 'CELL', NA],
+                           '60': ['Primary Xenograft Tissue', 'XP', NA],
+                           '61': ['Cell Line Derived Xenograft Tissue', 'XCL', NA],
+                           '85': ['Next Generation Cancer Model', 'TNGCM', TUMOR],
+                           '86': ['Expanded Next Generation Cancer Model', 'TXNGCM', TUMOR],
+                           '99': ['sample type 99', '99SH', NA]}
 
     GDC_TISSUE_TYPES = {'Tumor': TUMOR,
                         'Normal': NORMAL,
@@ -201,28 +207,28 @@ class SampleType:
     def getTumorNormalClassification(self, gdc_tissue_type, gdc_sample_type, gdc_sample_type_id):
         if gdc_sample_type_id is not None:
             return self.GDC_SAMPLE_TYPE_IDS[gdc_sample_type_id][2]
-        elif gdc_tissue_type is not None:
+        if gdc_tissue_type is not None:
             return self.GDC_TISSUE_TYPES[gdc_tissue_type]
-        elif gdc_sample_type is not None:
+        if gdc_sample_type is not None:
             if 'Normal' in gdc_sample_type:
                 return self.NORMAL
-            else:
-                return self.TUMOR
-        else:
-            return self.NA
+            return self.TUMOR
+        return self.NA
 
     def getLetterCode(self, sample_type_id):
         if sample_type_id is not None:
             return self.GDC_SAMPLE_TYPE_IDS[sample_type_id][1]
-        else:
-            return None
+        return None
+
 
 SAMPLE_TYPE = SampleType()
 
-class MetadataRetriever():
-    def __init__(self, api_endpoint, fields, gdc_api_root, token=None):
+
+class MetadataRetriever:
+    def __init__(self, api_endpoint, gdc_api_root, fields=None, expand=None, token=None):
         self.gdc_api_root = gdc_api_root
         self.fields = fields
+        self.expand = expand
         self.api_endpoint = api_endpoint
         if token:
             self.headers = {'X-Auth-Token': token}
@@ -230,65 +236,68 @@ class MetadataRetriever():
             self.headers = None
 
     def get_metadata(self, uuid):
-        url = "{0}/{1}/{2}".format(self.gdc_api_root, self.api_endpoint, uuid)
-        params = {'fields': self.fields}
-        #debug
-        #print('url: {0}'.format(url))
+        url = f"{self.gdc_api_root}/{self.api_endpoint}/{uuid}"
+        params = {'fields': self.fields, 'expand': self.expand}
+        # debug
+        # print('url: {0}'.format(url))
         response = requests.get(url, headers=self.headers, params=params, timeout=20)
         responseDict = response.json()
         return responseDict['data']
 
+
 class FileCaseMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root, token=None):
         fields = "cases.case_id,cases.submitter_id,cases.project.project_id,cases.tissue_source_site"
-        MetadataRetriever.__init__(self, 'files', fields, gdc_api_root, token)
+        MetadataRetriever.__init__(self, 'files', gdc_api_root, fields=fields, token=token)
+
 
 class FileCaseSampleMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root, token=None):
         fields = "cases.case_id,cases.submitter_id,cases.project.project_id"
         fields = fields + ",cases.samples.sample_id,cases.samples.submitter_id,cases.samples.sample_type_id,cases.samples.sample_type,cases.samples.tissue_type"
         fields = fields + ",cases.samples.portions.analytes.aliquots.submitter_id"
-        MetadataRetriever.__init__(self, 'files', fields, gdc_api_root, token)
+        MetadataRetriever.__init__(self, 'files', gdc_api_root, fields=fields, token=token)
+
 
 class FileMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root, token=None):
-        fields = "data_category,data_type,data_format,access,experimental_strategy,analysis.workflow_type,cases.project.program.name,cases.samples.is_ffpe,cases.samples.portions.is_ffpe,cases.samples.preservation_method"
-        MetadataRetriever.__init__(self, 'files', fields, gdc_api_root, token)
+        expand = "cases.samples,cases.samples.portions,cases.project.program,analysis,analysis.metadata.read_groups"
+        # below kept in case defaults change
+        # fields = "data_category,data_type,data_format,access,experimental_strategy,mean_coverage,analysis.workflow_type,cases.project.program.name,cases.samples.is_ffpe,cases.samples.portions.is_ffpe,cases.samples.preservation_method"
+        MetadataRetriever.__init__(self, 'files', gdc_api_root, expand=expand, token=token)
+
 
 class CaseMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root, token=None):
         fields = "primary_site,disease_type"
-        MetadataRetriever.__init__(self, 'cases', fields, gdc_api_root, token)
-        
-class IndexFileMetadataRetriever():
+        expand = "demographic"
+        MetadataRetriever.__init__(self, 'cases', gdc_api_root, fields=fields, expand=expand, token=token)
+
+
+class IndexFileMetadataRetriever:
     def __init__(self, bam_uuid, gdc_api_root, token=None):
-        self.gdc_api_root = gdc_api_root
-        if token:
-            self.headers = {'X-Auth-Token': token}
-        else:
-            self.headers = None
-        url = "{0}/files/{1}?expand=index_files".format(self.gdc_api_root, bam_uuid)
-        response = requests.get(url, headers=self.headers, timeout=5)
-        responseDict = response.json()
-        indexFilesList = responseDict['data']['index_files']
-        assert(len(indexFilesList) == 1)
+        meta_retriever = MetadataRetriever('files', gdc_api_root, expand='index_files', token=token)
+        responseDict = meta_retriever.get_metadata(bam_uuid)
+        indexFilesList = responseDict['index_files']
+        assert len(indexFilesList) == 1
         self.index_file = indexFilesList[0]
 
     def get_index_uuid(self):
-        return(self.index_file['file_id'])
-    
+        return self.index_file['file_id']
+
     def get_index_name(self):
-        return(self.index_file['file_name'])
-    
+        return self.index_file['file_name']
+
     def get_index_size(self):
-        return(self.index_file['file_size'])
-       
+        return self.index_file['file_size']
+
+
 SEPARATOR = '/'
 DRS_URL_ATTRIBUTE_SUFFIX = "drs_url"
 GDC_URL_ATTRIBUTE_SUFFIX = "gdc_url"
 
-def _read_manifestFile(manifestFile):
 
+def _read_manifestFile(manifestFile):
     manifestFileList = []
 
     with open(manifestFile, 'r') as fp:
@@ -297,6 +306,7 @@ def _read_manifestFile(manifestFile):
             manifestFileList.append(row)
 
     return manifestFileList
+
 
 def _add_to_knowncases(case_metadata, known_cases, gdc_api_root, token):
     case_id = case_metadata['case_id']
@@ -308,13 +318,17 @@ def _add_to_knowncases(case_metadata, known_cases, gdc_api_root, token):
         caseMetadata = caseMetadataRetriever.get_metadata(case_id)
         primary_site = caseMetadata.get('primary_site')
         disease_type = caseMetadata.get('disease_type')
+        demographics = caseMetadata.get('demographic', {})
 
-        new_case = {'submitter_id' : submitter_id,
-                    'project_id'   : project_id,
-                    'primary_site' : primary_site,
-                    'disease_type' : disease_type}
+        new_case = {'submitter_id': submitter_id,
+                    'project_id': project_id,
+                    'primary_site': primary_site,
+                    'disease_type': disease_type}
+        new_case.update((k, v) for k, v in demographics.items() if not (k.endswith('_id') or k.endswith('_datetime')
+                                                                        or k == 'state' or v is None))
         known_cases[case_id] = new_case
     return case_id
+
 
 def _add_to_knownsamples(sample_metadata, case_id, known_samples):
     sample_id = sample_metadata['sample_id']
@@ -322,21 +336,28 @@ def _add_to_knownsamples(sample_metadata, case_id, known_samples):
     sample_type = sample_metadata['sample_type']
     sample_type_id = sample_metadata.get('sample_type_id')
 
+    if tissue_type in {'Unknown', 'Not Reported'}:
+        tn_class = SAMPLE_TYPE.getTumorNormalClassification(tissue_type, sample_type, sample_type_id)
+        if tn_class in {SAMPLE_TYPE.TUMOR, SAMPLE_TYPE.NORMAL}:
+            tissue_type = tn_class.title()
+
     if sample_id not in known_samples:
         sample_submitter_id = sample_metadata['submitter_id']
-        new_sample = {'submitter_id' : sample_submitter_id,
+        new_sample = {'submitter_id': sample_submitter_id,
                       'tissue_type': tissue_type,
                       'sample_type': sample_type,
                       'sample_type_id': sample_type_id,
-                      'case_id' : case_id}
+                      'case_id': case_id}
         known_samples[sample_id] = new_sample
     return sample_id, SAMPLE_TYPE.getTumorNormalClassification(tissue_type, sample_type, sample_type_id)
+
 
 def _get_sample_type(sample_metadata):
     tissue_type = sample_metadata['tissue_type']
     sample_type = sample_metadata['sample_type']
     sample_type_id = sample_metadata.get('sample_type_id')
     return SAMPLE_TYPE.getTumorNormalClassification(tissue_type, sample_type, sample_type_id)
+
 
 def _add_pooled_sample_to_knownsamples(file_uuid, filename, samples_metadata, case_id, known_samples):
     sample_ids = [sample_metadata['sample_id'] for sample_metadata in samples_metadata]
@@ -345,28 +366,41 @@ def _add_pooled_sample_to_knownsamples(file_uuid, filename, samples_metadata, ca
     sample_types = [sample_metadata.get('sample_type') for sample_metadata in samples_metadata]
     sample_type_ids = [sample_metadata.get('sample_type_id') for sample_metadata in samples_metadata]
 
-    if len(set(tissue_types)) != 1:
+    if len(set(tissue_types)) != 1 and None not in tissue_types:
         print('inconsistent tissue types in pooled sample: {0}'.format(tissue_types))
         raise ValueError(file_uuid, filename)
-    if len(set(sample_types)) != 1:
+    try:
+        tissue_type = list(filter(lambda x: x is not None, tissue_types))[0]
+    except IndexError:
+        tissue_type = None
+    if len(set(sample_types)) != 1 and None not in sample_types:
         print('inconsistent sample types in pooled sample: {0}'.format(sample_types))
         raise ValueError(file_uuid, filename)
-    if len(set(sample_type_ids)) != 1:
+    try:
+        sample_type = list(filter(lambda x: x is not None, sample_types))[0]
+    except IndexError:
+        sample_type = None
+    if len(set(sample_type_ids)) != 1 and None not in sample_type_ids:
         print('inconsistent sample type ids in pooled sample: {0}'.format(sample_type_ids))
         raise ValueError(file_uuid, filename)
+    try:
+        sample_type_id = list(filter(lambda x: x is not None, sample_type_ids))[0]
+    except IndexError:
+        sample_type_id = None
 
     pooled_sample_id = '__'.join(sorted(sample_ids))
     pooled_sample_submitter_id = '__'.join(sorted(submitter_ids))
 
     if pooled_sample_id not in known_samples:
-        new_sample = {'submitter_id' : pooled_sample_submitter_id,
+        new_sample = {'submitter_id': pooled_sample_submitter_id,
                       'tissue_type': tissue_types[0],
                       'sample_type': sample_types[0],
                       'sample_type_id': sample_type_ids[0],
-                      'case_id' : case_id}
+                      'case_id': case_id}
         known_samples[pooled_sample_id] = new_sample
-    return pooled_sample_id, SAMPLE_TYPE.getTumorNormalClassification(tissue_types[0], sample_types[0], sample_type_ids[0])
-        
+    return pooled_sample_id, SAMPLE_TYPE.getTumorNormalClassification(tissue_types[0], sample_types[0],
+                                                                      sample_type_ids[0])
+
 
 def _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs):
     pair_id = "{0}_{1}".format(tumor_sample_id, normal_sample_id)
@@ -374,8 +408,8 @@ def _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs):
         known_pairs[pair_id] = {'tumor': tumor_sample_id, 'normal': normal_sample_id}
     return pair_id
 
-def _constructAttributeName_base(is_ffpe, experimental_strategy, workflow_type, data_category, data_type, data_format):
 
+def _constructAttributeName_base(is_ffpe, experimental_strategy, workflow_type, data_category, data_type, data_format):
     if experimental_strategy is not None:
         experimental_strategy_abbrev = EXP_STRATEGY.getAbbreviation(experimental_strategy) + '__'
     else:
@@ -387,22 +421,24 @@ def _constructAttributeName_base(is_ffpe, experimental_strategy, workflow_type, 
         workflow_type_abbrev = ''
 
     data_type_lc = data_type.lower().replace(" ", "_") + '__'
-    
+
     data_format_lc = data_format.lower().replace(" ", "_") + '__'
-    
+
     ffpe = "FFPE__" if is_ffpe else ""
 
     attribute_name_base = ffpe + experimental_strategy_abbrev + workflow_type_abbrev + data_type_lc + data_format_lc
 
-    return (attribute_name_base)
+    return attribute_name_base
+
 
 def _getImageCodeAndPortionFromImageFilename(filename):
     image_code = filename.split('.')[0].split('-')[-1]
     portion = int(filename.split('.')[0].split('-')[-2])
     return image_code, portion
 
-def _constructImageAttributeName_base(experimental_strategy, workflow_type, data_category, data_type, data_format, filename=None):
 
+def _constructImageAttributeName_base(experimental_strategy, workflow_type, data_category, data_type, data_format,
+                                      filename=None):
     if experimental_strategy is not None:
         experimental_strategy_abbrev = EXP_STRATEGY.getAbbreviation(experimental_strategy) + '__'
     else:
@@ -413,9 +449,9 @@ def _constructImageAttributeName_base(experimental_strategy, workflow_type, data
     else:
         workflow_type_abbrev = ''
 
-    data_type_lc = data_type.lower().replace(" ", "_") + '__' 
+    data_type_lc = data_type.lower().replace(" ", "_") + '__'
     data_format_lc = data_format.lower().replace(" ", "_") + '__'
-    
+
     # see https://wiki.nci.nih.gov/display/TCGA/TCGA+barcode# for interpretation of TCGA bar code
     # that is incorporated into image filename
     image_code, portion = _getImageCodeAndPortionFromImageFilename(filename)
@@ -425,6 +461,7 @@ def _constructImageAttributeName_base(experimental_strategy, workflow_type, data
 
     return attribute_name_base, portion
 
+
 def _pick_tcga_submitter(a, b):
     '''Comparator function for barcodes, using the rules described in the GDAC                                                     
     FAQ entry for replicate samples: https://confluence.broadinstitute.org/display/GDAC/FAQ                                        
@@ -433,8 +470,8 @@ def _pick_tcga_submitter(a, b):
     # TCGA-BL-A0C8-01A-11<Analyte>-<plate>-01                                                                                      
     analyte1 = a[19]
     analyte2 = b[19]
-    plate1   = a[21:25]
-    plate2   = b[21:25]
+    plate1 = a[21:25]
+    plate2 = b[21:25]
 
     # Equals case                                                                                                                  
     if a == b:
@@ -459,7 +496,8 @@ def _pick_tcga_submitter(a, b):
     else:
         # Default back to highest lexicographical sort value                                                                       
         return a if a >= b else b
-    
+
+
 # this seemed clearer to me (Chet), but felt it better to use the same code
 # used by GDAC
 def _pick_tcga_aliquot(a, b):
@@ -487,10 +525,10 @@ def _pick_tcga_aliquot(a, b):
 
     analyte1 = a[19]
     analyte2 = b[19]
-    plate1   = a[21:25]
-    plate2   = b[21:25]
-    rna_analytes = set(['H', 'R', 'T'])
-    dna_analytes = set(['D', 'W', 'X']) 
+    plate1 = a[21:25]
+    plate2 = b[21:25]
+    rna_analytes = {'H', 'R', 'T'}
+    dna_analytes = {'D', 'W', 'X'}
 
     if a == b:
         return a
@@ -520,7 +558,6 @@ def _pick_tcga_aliquot(a, b):
 
 
 def _pick_tcga_aliquot_pair(aliquot_pair_1, aliquot_pair_2):
-    
     tumor_aliquot_1 = aliquot_pair_1['tumor']
     tumor_aliquot_2 = aliquot_pair_2['tumor']
     normal_aliquot_1 = aliquot_pair_1['normal']
@@ -536,7 +573,8 @@ def _pick_tcga_aliquot_pair(aliquot_pair_1, aliquot_pair_2):
         print("WARNING: aliquot ids are identical, unable to make rational choice")
         return aliquot_pair_1
 
-def _pick_target_submitter(a,b):
+
+def _pick_target_submitter(a, b):
     # Get the analytes and plates                                                                                                  
     # TARGET-##-TSS-ABCDEF-TS.TP.N-<portion><analyte>                                                                              
 
@@ -551,15 +589,15 @@ def _pick_target_submitter(a,b):
     elif analyte1 == analyte2:
         # Prefer the aliquot with the higher portion value                                                                         
         return a if portion1 >= portion2 else b
-    #If RNA then analyte codes can be only R or S                                                                                  
+    # If RNA then analyte codes can be only R or S
     elif analyte1 == "S":
-        #Then analyte2 has to be R (because they can't be equal)                                                                   
+        # Then analyte2 has to be R (because they can't be equal)
         return b
     elif analyte1 == "R":
-        #Then analyte2 has to be S (because they can't be equal)                                                                   
+        # Then analyte2 has to be S (because they can't be equal)
         return a
     elif analyte1 == "D":
-        #prefer D to E,W,X,Y                                                                                                       
+        # prefer D to E,W,X,Y
         return a
     elif analyte1 == "E":
         return b if analyte2 == "D" else a
@@ -571,9 +609,9 @@ def _pick_target_submitter(a,b):
     else:
         # analyte1 is Y                                                                                                            
         return a if analyte2 == "X" or analyte2 == "W" else b
-    
+
+
 def _pick_target_aliquot_pair(aliquot_pair_1, aliquot_pair_2):
-    
     tumor_aliquot_1 = aliquot_pair_1['tumor']
     tumor_aliquot_2 = aliquot_pair_2['tumor']
     normal_aliquot_1 = aliquot_pair_1['normal']
@@ -589,16 +627,17 @@ def _pick_target_aliquot_pair(aliquot_pair_1, aliquot_pair_2):
         print("WARNING: aliquot ids are identical, unable to make rational choice")
         return aliquot_pair_1
 
-def _resolve_collision(data_category, data_type, experimental_strategy, program, uuid1, name1, uuid2, name2, gdc_api_root, token):
 
-    # NOTE: we chose not to employ the created_datetime or updated_datetime fields in 
+def _resolve_collision(data_category, data_type, experimental_strategy, program, uuid1, name1, uuid2, name2,
+                       gdc_api_root, token):
+    # NOTE: we chose not to employ the created_datetime or updated_datetime fields in
     # our decision logic.  From what we can tell, neither should be used to make a selection between 
     # two files.
 
-
-    # Files that are associated with multiple cases won't use information encoded in aliquot barcode, 
+    # Files that are associated with multiple cases won't use information encoded in aliquot barcode,
     if uuid1 in DEFERRED_FILE_NUM_OF_CASES or uuid2 in DEFERRED_FILE_NUM_OF_CASES:
-        if program == GDC_ProgramName.TARGET and data_category in [GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN]:
+        if program == GDC_ProgramName.TARGET and data_category in [GDC_DataCategory.CLINICAL,
+                                                                   GDC_DataCategory.BIOSPECIMEN]:
             # special-case logic to deal with TARGET clinical and biospecimin files
             # select file associated with Discovery cohort over file associated with Validation cohort
             # where cohort association is encoded in the filename
@@ -623,7 +662,7 @@ def _resolve_collision(data_category, data_type, experimental_strategy, program,
             num_cases2 = 1
 
         print("number of cases...")
-        print("{0}: {1}, {2}: {3}".format(uuid1,num_cases1,uuid2,num_cases2))
+        print("{0}: {1}, {2}: {3}".format(uuid1, num_cases1, uuid2, num_cases2))
         # If one of the two files has more cases associated with it, we assume it's the correct file to pick.
         if num_cases1 >= num_cases2:
             return uuid1, name1
@@ -638,20 +677,21 @@ def _resolve_collision(data_category, data_type, experimental_strategy, program,
     normal_aliquot_submitter_id2 = None
 
     # SNV and Combined Nucleotide Variation (TARGET only) files are associated with two samples: tumor and normal. 
-    if ((data_category in GDC_DataCategory.SNV and 
-         data_type not in set([GDC_DataType.AGGREGATED_SOMATIC_MUTATION, GDC_DataType.MASKED_SOMATIC_MUTATION])) or
-        (data_category in GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION) or
-        (data_category in GDC_DataCategory.LEGACY_SNV and
-         data_type in GDC_DataType.LEGACY_SIMPLE_NUCLEOTIDE_VARIATION)):
+    if ((data_category in GDC_DataCategory.SNV and
+         data_type not in {GDC_DataType.AGGREGATED_SOMATIC_MUTATION, GDC_DataType.MASKED_SOMATIC_MUTATION}) or
+            (data_category in GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION) or
+            (data_category in GDC_DataCategory.LEGACY_SNV and
+             data_type in GDC_DataType.LEGACY_SIMPLE_NUCLEOTIDE_VARIATION)):
 
         file_fields = "cases.samples.sample_type,cases.samples.portions.analytes.aliquots.submitter_id,cases.samples.sample_type_id"
-        meta_retriever = MetadataRetriever('files', file_fields, gdc_api_root, token)
+        meta_retriever = MetadataRetriever('files', gdc_api_root, fields=file_fields, token=token)
 
         data1 = meta_retriever.get_metadata(uuid1)
         samples_list1 = data1['cases'][0]['samples']
         assert len(samples_list1) == 2
         for s in samples_list1:
-            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s.get('tissue_type'), s.get('sample_type'), s.get('sample_type_id'))
+            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s.get('tissue_type'), s.get('sample_type'),
+                                                                      s.get('sample_type_id'))
             if sample_type_tn == SAMPLE_TYPE.TUMOR:
                 tumor_aliquot_submitter_id1 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
             else:
@@ -662,16 +702,17 @@ def _resolve_collision(data_category, data_type, experimental_strategy, program,
         samples_list2 = data2['cases'][0]['samples']
         assert len(samples_list2) == 2
         for s in samples_list2:
-            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s.get('tissue_type_'), s.get('sample_type'), s.get('sample_type_id'))
+            sample_type_tn = SAMPLE_TYPE.getTumorNormalClassification(s.get('tissue_type_'), s.get('sample_type'),
+                                                                      s.get('sample_type_id'))
             if sample_type_tn == SAMPLE_TYPE.TUMOR:
                 tumor_aliquot_submitter_id2 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
             else:
                 assert sample_type_tn == SAMPLE_TYPE.NORMAL, "expected normal sample type"
                 normal_aliquot_submitter_id2 = s['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
 
-        aliquot_pair_1 = {'tumor' : tumor_aliquot_submitter_id1, 'normal' : normal_aliquot_submitter_id1}
-        aliquot_pair_2 = {'tumor' : tumor_aliquot_submitter_id2, 'normal' : normal_aliquot_submitter_id2}
-        
+        aliquot_pair_1 = {'tumor': tumor_aliquot_submitter_id1, 'normal': normal_aliquot_submitter_id1}
+        aliquot_pair_2 = {'tumor': tumor_aliquot_submitter_id2, 'normal': normal_aliquot_submitter_id2}
+
         print('aliquot pair name for {0}: {1} / {2}'.format(uuid1, aliquot_pair_1['tumor'], aliquot_pair_1['normal']))
         print('aliquot pair pair for {0}: {1} / {2}'.format(uuid2, aliquot_pair_2['tumor'], aliquot_pair_2['normal']))
 
@@ -683,7 +724,7 @@ def _resolve_collision(data_category, data_type, experimental_strategy, program,
             # no known structure of metadata encoded in aliquot name; just choose 1 arbitrarily
             print('WARNING: no known structure of metadata encoded in aliquote name; choice is arbitrary!')
             chosen_aliquot_pair = aliquot_pair_1
-        
+
         if chosen_aliquot_pair == aliquot_pair_1:
             return uuid1, name1
         else:
@@ -691,8 +732,8 @@ def _resolve_collision(data_category, data_type, experimental_strategy, program,
 
     # Here we handle other file types that are associated with single sample.
     else:
-        file_fields = "mean_coverage,cases.project.program.name,cases.samples.portions.analytes.aliquots.submitter_id"
-        meta_retriever = MetadataRetriever('files', file_fields, gdc_api_root, token)
+        file_expand = "cases.samples.portions.analytes.aliquots,cases.project.program"
+        meta_retriever = MetadataRetriever('files', gdc_api_root, expand=file_expand, token=token)
 
         data1 = meta_retriever.get_metadata(uuid1)
         data2 = meta_retriever.get_metadata(uuid2)
@@ -700,11 +741,39 @@ def _resolve_collision(data_category, data_type, experimental_strategy, program,
         assert len(data1['cases'][0]['samples']) == 1, "more than one sample associated with file"
         assert len(data2['cases'][0]['samples']) == 1, "more than one sample associated with file"
 
-        aliquot_submitter_id1 = data1['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
-        aliquot_submitter_id2 = data2['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0]['submitter_id']
+        aliquot_submitter_id1 = data1['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0][
+            'submitter_id']
+        aliquot_submitter_id2 = data2['cases'][0]['samples'][0]['portions'][0]['analytes'][0]['aliquots'][0][
+            'submitter_id']
 
-        print('aliquot name for {0}: {1}'.format(uuid1, aliquot_submitter_id1))
-        print('aliquot name for {0}: {1}'.format(uuid2, aliquot_submitter_id2))
+        try:
+            release1 = [float(release) for release in data1['data_release'].split(' - ')]
+        except ValueError:
+            release1 = [0.0]
+
+        try:
+            release2 = [float(release) for release in data2['data_release'].split(' - ')]
+        except ValueError:
+            release2 = [0.0]
+
+        print('aliquot name / data release for {0}: {1}/{2}'.format(uuid1, aliquot_submitter_id1, release1))
+        print('aliquot name / data release for {0}: {1}/{2}'.format(uuid2, aliquot_submitter_id2, release2))
+
+        if len(release1) != len(release2):
+            if len(release1) < len(release2):
+                assert len(
+                    release1) == 1, f"Unexpected release format: \n\t{data1['data_release']}\n\t{data2['data_release']}"
+                release1 *= len(release2)
+            else:
+                assert len(
+                    release2) == 1, f"Unexpected release format: \n\t{data1['data_release']}\n\t{data2['data_release']}"
+                release2 *= len(release1)
+
+        if release1 != release2:
+            if release1 > release2:
+                return uuid1, name1
+            else:
+                return uuid2, name2
 
         if data_category == GDC_DataCategory.SEQUENCING_READS:
             # Check if only one file name begins with the aliquot ID, indicating it's newer
@@ -744,29 +813,41 @@ def _resolve_collision(data_category, data_type, experimental_strategy, program,
 def _create_drs_url(file_uuid):
     return '{}{}'.format(DRS_ROOT, file_uuid)
 
+
 def _create_gdc_url(api_root, file_uuid):
     return api_root + '/data/' + file_uuid
+
 
 def _get_file_uuid_from_drs_url(drs_url):
     return drs_url.partition(DRS_ROOT)[2]
 
+
 def _get_file_uuid_from_gdc_url(api_root, gdc_url):
     return gdc_url.partition(api_root + '/data/')[2]
 
+
 def _put_file_attribute(drs_flag, entity, basename, file_uuid, filename=None,
-                        file_size=None, api_root=None):
+                        file_size=None, api_root=None, mean_coverage=None,
+                        avg_read_length=None, release=None):
     if drs_flag:
         entity[basename + DRS_URL_ATTRIBUTE_SUFFIX] = _create_drs_url(file_uuid)
     else:
         entity[basename + GDC_URL_ATTRIBUTE_SUFFIX] = _create_gdc_url(api_root, file_uuid)
         entity[basename + "gdc_filename"] = filename
         entity[basename + "gdc_filesize"] = ceil(float(file_size) / 1000000000.0)
+    if mean_coverage is not None:
+        entity[basename + "mean_coverage"] = mean_coverage
+    if avg_read_length is not None:
+        entity[basename + "average_read_length"] = avg_read_length
+    if release is not None:
+        entity[basename + "gdc_release"] = release
+
 
 def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
                         file_size, data_category, data_type, data_format,
                         experimental_strategy, workflow_type, is_ffpe, program,
-                        gdc_api_root, token):
-    
+                        gdc_api_root, token, mean_coverage=None,
+                        avg_read_length=None, release=None):
     def get_uuid_from_url(url):
         if drs_flag:
             return _get_file_uuid_from_drs_url(url)
@@ -776,7 +857,7 @@ def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
     # I needed to insert some special-case processing for image data files
     # this probably isn't the cleanest way to handle it, but good enough for now
     url_attribute_suffix = DRS_URL_ATTRIBUTE_SUFFIX if drs_flag else GDC_URL_ATTRIBUTE_SUFFIX
-    if data_type in set([GDC_DataType.SLIDE_IMAGE]):
+    if data_type in {GDC_DataType.SLIDE_IMAGE}:
         basename, portion = _constructImageAttributeName_base(experimental_strategy, workflow_type,
                                                               data_category, data_type, data_format, filename)
         attribute_name = basename + url_attribute_suffix
@@ -786,7 +867,7 @@ def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
             existing_uuid = get_uuid_from_url(existing_url)
             existing_filename = UUID_TO_FILENAME[existing_uuid]
 
-            print("multiple files for same attribute!") 
+            print("multiple files for same attribute!")
             print("entity id: {0}, attribute name: {1}".format(entity_id, attribute_name))
             print("new file: {0}/{1}".format(file_uuid, filename))
             print("existing file: {0}/{1}".format(existing_uuid, existing_filename))
@@ -794,19 +875,21 @@ def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
             _, portion_present = _getImageCodeAndPortionFromImageFilename(existing_filename)
             if portion > portion_present:
                 print("newer file has larger portion ID; use newer file")
-                _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root)
+                _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root,
+                                    mean_coverage, avg_read_length, release)
             elif portion < portion_present:
                 print("newer file has smaller portion ID; retain existing file")
             else:
                 print("Both files have same portion ID: retain existing file")
 
         else:
-            _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root)
+            _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root, mean_coverage,
+                                avg_read_length, release)
     else:
         basename = _constructAttributeName_base(is_ffpe, experimental_strategy, workflow_type,
                                                 data_category, data_type, data_format)
         attribute_name = basename + url_attribute_suffix
-        
+
         # see if attribute already defined for entity
         if attribute_name in entity:
             existing_url = entity[attribute_name]
@@ -817,45 +900,45 @@ def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
             print("entity id: {0}, attribute name: {1}".format(entity_id, attribute_name))
             print("new file: {0}/{1}".format(file_uuid, filename))
             print("existing file: {0}/{1}".format(existing_uuid, existing_filename))
-            
+
             chosen_uuid, chosen_filename = _resolve_collision(data_category, data_type, experimental_strategy, program,
-                                                              file_uuid, filename, existing_uuid, existing_filename, gdc_api_root, token)
+                                                              file_uuid, filename, existing_uuid, existing_filename,
+                                                              gdc_api_root, token)
             print("chosen file is: {0}/{1}".format(chosen_uuid, chosen_filename))
 
-
             if chosen_uuid == file_uuid:
-                _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root)
+                _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root,
+                                    mean_coverage, avg_read_length, release)
                 print("experimental strategy: {0}".format(experimental_strategy))
-                # GDC does not provide index files for RNA-Seq BAMs
-                if data_format == 'BAM'and experimental_strategy not in ('miRNA-Seq', 'RNA-Seq'):
-                    bai_basename = basename.replace('__bam__', '__bai__')
-                    try:
-                        indexFileMetadataRetriever = IndexFileMetadataRetriever(file_uuid, gdc_api_root, token)
-                    except KeyError:
-                        print("WARNING: No index file found for {}, skipping.".format(filename))
-                        return
-                    bai_uuid = indexFileMetadataRetriever.get_index_uuid()
-                    bai_name = indexFileMetadataRetriever.get_index_name()
-                    bai_size = indexFileMetadataRetriever.get_index_size()
-                    _put_file_attribute(drs_flag, entity, bai_basename, bai_uuid, bai_name, bai_size, gdc_api_root)
+                # GDC does not provide index files for non-genomic RNA-Seq BAMs
+                if data_format == 'BAM' and (experimental_strategy not in ('miRNA-Seq', 'RNA-Seq') or
+                                             workflow_type == "STAR 2-Pass Genome"):
+                    _add_bai_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token)
 
             else:
                 return
         else:
-            _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root)
+            _put_file_attribute(drs_flag, entity, basename, file_uuid, filename, file_size, gdc_api_root, mean_coverage,
+                                avg_read_length, release)
 
-            # GDC does not provide index files for RNA-Seq BAMs
-            if data_format == 'BAM'and experimental_strategy not in ('miRNA-Seq', 'RNA-Seq'):
-                bai_basename = basename.replace('__bam__', '__bai__')
-                try:
-                    indexFileMetadataRetriever = IndexFileMetadataRetriever(file_uuid, gdc_api_root, token)
-                except KeyError:
-                    print("WARNING: No index file found for {}, skipping.".format(filename))
-                    return
-                bai_uuid = indexFileMetadataRetriever.get_index_uuid()
-                bai_name = indexFileMetadataRetriever.get_index_name()
-                bai_size = indexFileMetadataRetriever.get_index_size()
-                _put_file_attribute(drs_flag, entity, bai_basename, bai_uuid, bai_name, bai_size, gdc_api_root)
+            # GDC does not provide index files for non-genomic RNA-Seq BAMs
+            if data_format == 'BAM' and (experimental_strategy not in ('miRNA-Seq', 'RNA-Seq') or
+                                         workflow_type == "STAR 2-Pass Genome"):
+                _add_bai_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token)
+
+
+def _add_bai_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token):
+    bai_basename = basename.replace('__bam__', '__bai__')
+    try:
+        indexFileMetadataRetriever = IndexFileMetadataRetriever(file_uuid, gdc_api_root, token)
+    except KeyError:
+        print("WARNING: No index file found for {}, skipping.".format(filename))
+        return
+    bai_uuid = indexFileMetadataRetriever.get_index_uuid()
+    bai_name = indexFileMetadataRetriever.get_index_name()
+    bai_size = indexFileMetadataRetriever.get_index_size()
+    _put_file_attribute(drs_flag, entity, bai_basename, bai_uuid, bai_name, bai_size, gdc_api_root)
+
 
 def fix_star_workflow(responseDict, filename):
     """
@@ -865,8 +948,8 @@ def fix_star_workflow(responseDict, filename):
     occurrences.
     """
     if 'analysis' in responseDict \
-       and 'workflow_type' in responseDict['analysis'] \
-       and responseDict['analysis']['workflow_type'] == "STAR 2-Pass":
+            and 'workflow_type' in responseDict['analysis'] \
+            and responseDict['analysis']['workflow_type'] == "STAR 2-Pass":
         if 'chimeric' in filename:
             responseDict['analysis']['workflow_type'] += " Chimeric"
         elif 'genomic' in filename:
@@ -874,68 +957,75 @@ def fix_star_workflow(responseDict, filename):
         elif 'transcriptome' in filename:
             responseDict['analysis']['workflow_type'] += " Transcriptome"
 
+
 def get_file_metadata(drs_flag, file_uuid, filename, file_size, known_cases,
                       known_samples, known_pairs, deferred_file_uuids,
                       gdc_api_root, token=None):
-    
-    pp = pprint.PrettyPrinter()
+    # pp = pprint.PrettyPrinter()
 
     # get from GDC the data file's category, type, access type, format, experimental strategy,
-    # analysis workflow type
+    # analysis workflow type, mean coverage, and release version
     fileMetadataRetriever = FileMetadataRetriever(gdc_api_root, token)
     responseDict = fileMetadataRetriever.get_metadata(file_uuid)
     fix_star_workflow(responseDict, filename)
-    
+
     try:
         data_category = responseDict['data_category']
-        data_type     = responseDict['data_type']
-        data_format   = responseDict['data_format']
-        access        = responseDict['access']
-        program       = responseDict['cases'][0]['project']['program']['name']
-        is_ffpe       = False
+        data_type = responseDict['data_type']
+        data_format = responseDict['data_format']
+        access = responseDict['access']
+        program = responseDict['cases'][0]['project']['program']['name']
+        mean_coverage = responseDict.get('mean_coverage')
+        try:
+            release = float(responseDict['data_release'].split(' - ')[0])
+        except ValueError:
+            release = 0.0
+        is_ffpe = False
         if data_category not in {GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN}:
             for sample in responseDict['cases'][0]['samples']:
                 if 'is_ffpe' in sample and sample['is_ffpe'] is not None:
                     is_ffpe |= sample['is_ffpe']
-                elif 'preservation_method' in sample and sample['preservation_method'] is not None and sample['preservation_method'].upper() != 'UNKNOWN':
+                elif 'preservation_method' in sample and sample['preservation_method'] is not None and sample[
+                    'preservation_method'].upper() != 'UNKNOWN':
                     is_ffpe |= sample['preservation_method'].upper() == 'FFPE'
                 if 'portions' in sample:
                     for portion in sample['portions']:
-                        is_ffpe |= portion['is_ffpe']
+                        is_ffpe |= portion.get('is_ffpe', False)
     except KeyError as x:
         # we expect all files to have at least a data_category, data_type, access type and program assigned to them
         print("KeyError = ", x)
         print("SKIPPING FILE: file uuid = {0}, file name = {1}".format(file_uuid, filename))
         return
-    
-    if 'experimental_strategy' in responseDict:
-        experimental_strategy = responseDict['experimental_strategy']
-    else: 
-        experimental_strategy = None
-    if 'analysis' in responseDict and 'workflow_type' in responseDict['analysis']:
-        workflow_type = responseDict['analysis']['workflow_type']
-    else:
-        workflow_type = None
-    
 
-    if data_category in {GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN}: 
+    experimental_strategy = responseDict.get('experimental_strategy')
+    workflow_type = responseDict.get('analysis', {}).get('workflow_type')
+    read_groups = responseDict.get('analysis', {}).get('metadata', {}).get('read_groups')
+    avg_read_length = None
+    if read_groups is not None and len(read_groups) > 0:
+        # It's possible for read_length to be null according to the data dictionary, and though the field's presence is
+        # supposedly guaranteed, the below ensures filtering of both non-existence and null values
+        read_lengths = [read_group['read_length'] for read_group in read_groups if
+                        read_group.get('read_length') is not None]
+        if len(read_lengths) > 0:
+            avg_read_length = sum(read_lengths) / len(read_lengths)
+
+    if data_category in {GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN}:
         if data_type == GDC_DataType.SLIDE_IMAGE:
-            fileMetadataRetriever = FileCaseSampleMetadataRetriever(gdc_api_root, token)            
+            fileMetadataRetriever = FileCaseSampleMetadataRetriever(gdc_api_root, token)
         else:
             fileMetadataRetriever = FileCaseMetadataRetriever(gdc_api_root, token)
     else:
         fileMetadataRetriever = FileCaseSampleMetadataRetriever(gdc_api_root, token)
 
     # quick fix for legacy image data - will clean up
-    if data_type in set([GDC_DataType.LEGACY_TISSUE_SLIDE_IMAGE, GDC_DataType.LEGACY_DIAGNOSTIC_IMAGE]):
+    if data_type in {GDC_DataType.LEGACY_TISSUE_SLIDE_IMAGE, GDC_DataType.LEGACY_DIAGNOSTIC_IMAGE}:
         fileMetadataRetriever = FileCaseSampleMetadataRetriever(gdc_api_root, token)
-
 
     fileMetadata = fileMetadataRetriever.get_metadata(file_uuid)
 
-    #debug
-    #print('metadata:')
-    #pp.pprint(fileMetadata)
+    # debug
+    # print('metadata:')
+    # pp.pprint(fileMetadata)
 
     cases = fileMetadata['cases']
 
@@ -948,24 +1038,28 @@ def get_file_metadata(drs_flag, file_uuid, filename, file_size, known_cases,
         samples = cases[0]['samples']
 
         num_associated_samples = len(samples)
-        #print(samples)
+        # print(samples)
 
     # first consider files that are associated with a single case
     if num_associated_cases == 1:
         if num_associated_samples == 0:
             case_id = _add_to_knowncases(cases[0], known_cases, gdc_api_root, token)
             _add_file_attribute(drs_flag, case_id, known_cases[case_id], file_uuid, filename, file_size,
-                                data_category, data_type, data_format, experimental_strategy, workflow_type, is_ffpe, program, gdc_api_root, token)
+                                data_category, data_type, data_format, experimental_strategy, workflow_type, is_ffpe,
+                                program, gdc_api_root, token, mean_coverage, avg_read_length, release)
         elif num_associated_samples == 1:
             case_id = _add_to_knowncases(cases[0], known_cases, gdc_api_root, token)
             sample_id, _ = _add_to_knownsamples(samples[0], case_id, known_samples)
             _add_file_attribute(drs_flag, sample_id, known_samples[sample_id], file_uuid, filename, file_size,
-                                data_category, data_type, data_format, experimental_strategy, 
-                                workflow_type, is_ffpe, program, gdc_api_root, token)
+                                data_category, data_type, data_format, experimental_strategy,
+                                workflow_type, is_ffpe, program, gdc_api_root, token, mean_coverage, avg_read_length,
+                                release)
 
         elif num_associated_samples == 2:
-            if data_category in {GDC_DataCategory.SNV, GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION, GDC_DataCategory.SV} or \
-               (data_category == GDC_DataCategory.COPY_NUMBER_VARIATION and (experimental_strategy == "WGS" or workflow_type == "ASCAT2")):
+            if data_category in {GDC_DataCategory.SNV, GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION,
+                                 GDC_DataCategory.SV} or \
+                    (data_category == GDC_DataCategory.COPY_NUMBER_VARIATION and (
+                            experimental_strategy == "WGS" or workflow_type == "ASCAT2")):
                 case_id = _add_to_knowncases(cases[0], known_cases, gdc_api_root, token)
                 sample1_id, sample1_type_tn = _add_to_knownsamples(samples[0], case_id, known_samples)
                 sample2_id, sample2_type_tn = _add_to_knownsamples(samples[1], case_id, known_samples)
@@ -979,20 +1073,24 @@ def get_file_metadata(drs_flag, file_uuid, filename, file_size, known_cases,
 
                 pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
                 _add_file_attribute(drs_flag, pair_id, known_pairs[pair_id], file_uuid, filename, file_size,
-                                    data_category, data_type, data_format, experimental_strategy, 
-                                    workflow_type, is_ffpe, program, gdc_api_root, token)
+                                    data_category, data_type, data_format, experimental_strategy,
+                                    workflow_type, is_ffpe, program, gdc_api_root, token, mean_coverage,
+                                    avg_read_length, release)
             else:
-                    # Within some programs (e.g., CPTAC), if a given specimen did not have enough material for genomics analysis
-                    # multiple specimens or cores from a given patient are being combined to get 
-                    # sufficient material. 
-                    case_id = _add_to_knowncases(cases[0], known_cases, gdc_api_root, token)
-                    sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, samples, case_id, known_samples)
-                    _add_file_attribute(drs_flag, sample_id, known_samples[sample_id], file_uuid, filename, file_size,
-                                        data_category, data_type, data_format, experimental_strategy, 
-                                        workflow_type, access, program, gdc_api_root, token)
+                # Within some programs (e.g., CPTAC), if a given specimen did not have enough material for genomics analysis
+                # multiple specimens or cores from a given patient are being combined to get 
+                # sufficient material. 
+                case_id = _add_to_knowncases(cases[0], known_cases, gdc_api_root, token)
+                sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, samples, case_id,
+                                                                     known_samples)
+                _add_file_attribute(drs_flag, sample_id, known_samples[sample_id], file_uuid, filename, file_size,
+                                    data_category, data_type, data_format, experimental_strategy,
+                                    workflow_type, is_ffpe, program, gdc_api_root, token, mean_coverage,
+                                    avg_read_length, release)
 
-        elif num_associated_samples > 2: 
-            if program == GDC_ProgramName.CPTAC and (data_category == GDC_DataCategory.SNV or data_category == GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION):
+        elif num_associated_samples > 2:
+            if program == GDC_ProgramName.CPTAC and (
+                    data_category in {GDC_DataCategory.SNV, GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION}):
                 # Within the CPTAC program, if a given specimen did not have enough material for proteomics or 
                 # genomics, multiple specimens or cores from a given patient are being combined to get 
                 # sufficient material. 
@@ -1012,7 +1110,8 @@ def get_file_metadata(drs_flag, file_uuid, filename, file_size, known_cases,
                     if len(tumor_samples) == 1:
                         tumor_sample_id, _pwd = _add_to_knownsamples(tumor_samples[0], case_id, known_samples)
                     else:
-                        tumor_sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, tumor_samples, case_id, known_samples)
+                        tumor_sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, tumor_samples,
+                                                                                   case_id, known_samples)
                 else:
                     print('issue with tumor samples, number of tumor samples = 0')
 
@@ -1020,28 +1119,33 @@ def get_file_metadata(drs_flag, file_uuid, filename, file_size, known_cases,
                     if len(normal_samples) == 1:
                         normal_sample_id, _pwd = _add_to_knownsamples(normal_samples[0], case_id, known_samples)
                     else:
-                        normal_sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, normal_samples, case_id, known_samples)
+                        normal_sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, normal_samples,
+                                                                                    case_id, known_samples)
                 else:
                     print('issue with normal samples, number of normal samples = 0')
                     raise ValueError(file_uuid, filename, data_category)
 
                 pair_id = _add_to_knownpairs(tumor_sample_id, normal_sample_id, known_pairs)
                 _add_file_attribute(drs_flag, pair_id, known_pairs[pair_id], file_uuid, filename, file_size,
-                                    data_category, data_type, data_format, experimental_strategy, 
-                                    workflow_type, is_ffpe, program, gdc_api_root, token)
+                                    data_category, data_type, data_format, experimental_strategy,
+                                    workflow_type, is_ffpe, program, gdc_api_root, token, mean_coverage,
+                                    avg_read_length, release)
 
             else:
                 case_id = _add_to_knowncases(cases[0], known_cases, gdc_api_root, token)
-                sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, samples, case_id, known_samples)
+                sample_id, _pwd = _add_pooled_sample_to_knownsamples(file_uuid, filename, samples, case_id,
+                                                                     known_samples)
                 _add_file_attribute(drs_flag, sample_id, known_samples[sample_id], file_uuid, filename, file_size,
-                                    data_category, data_type, data_format, experimental_strategy, 
-                                    workflow_type, is_ffpe, program, gdc_api_root, token)
+                                    data_category, data_type, data_format, experimental_strategy,
+                                    workflow_type, is_ffpe, program, gdc_api_root, token, mean_coverage,
+                                    avg_read_length, release)
 
     else:
         # file associated with multiple cases
         # we will record file_uuid and deal with later
         DEFERRED_FILE_NUM_OF_CASES[file_uuid] = num_associated_cases
         deferred_file_uuids.append((file_uuid, filename, file_size))
+
 
 # may eventually drop this and incorporate into get_file_metadata.  Wasn't sure what to do with files
 # associated with multiple cases or files associated with samples across multiple cases.
@@ -1050,8 +1154,8 @@ def get_file_metadata(drs_flag, file_uuid, filename, file_size, known_cases,
 # can be overridden by setting all_cases to true, in which case a paricipant entity will be created for each
 # case a file is associated with.
 
-def process_deferred_file_uuid(drs_flag, file_uuid, filename, file_size, known_cases, known_samples, all_cases, gdc_api_root, token):
-    
+def process_deferred_file_uuid(drs_flag, file_uuid, filename, file_size, known_cases, known_samples, all_cases,
+                               gdc_api_root, token):
     # get data file's name, category, type, access, format experimental strategy, workflow type
     fileMetadataRetriever = FileMetadataRetriever(gdc_api_root, token)
     responseDict = fileMetadataRetriever.get_metadata(file_uuid)
@@ -1062,17 +1166,23 @@ def process_deferred_file_uuid(drs_flag, file_uuid, filename, file_size, known_c
     data_format = responseDict['data_format']
     access = responseDict['access']
     program = responseDict['cases'][0]['project']['program']['name']
+    mean_coverage = responseDict.get('mean_coverage')
+    try:
+        release = float(responseDict['data_release'].split(' - ')[0])
+    except ValueError:
+        release = 0.0
     try:
         is_ffpe = False
         if data_category not in {GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN}:
             for sample in responseDict['cases'][0]['samples']:
                 if 'is_ffpe' in sample and sample['is_ffpe'] is not None:
                     is_ffpe |= sample['is_ffpe']
-                elif 'preservation_method' in sample and sample['preservation_method'] is not None and sample['preservation_method'].upper() != 'UNKNOWN':
+                elif 'preservation_method' in sample and sample['preservation_method'] is not None and sample[
+                    'preservation_method'].upper() != 'UNKNOWN':
                     is_ffpe |= sample['preservation_method'].upper() == 'FFPE'
                 if 'portions' in sample:
-                    for portion in sample['portions']:
-                        is_ffpe |= portion['is_ffpe']
+                    for portion in (sample['portions']):
+                        is_ffpe |= portion.get('is_ffpe', False)
     except KeyError as x:
         # we need to know the preservation method to properly utilize the file
         print("KeyError = ", x)
@@ -1088,22 +1198,25 @@ def process_deferred_file_uuid(drs_flag, file_uuid, filename, file_size, known_c
         if data_format in ['BCR Biotab']:
             print('skipping {0} file {1}'.format(data_format, file_uuid))
             return
-                  
+
     if data_category == GDC_DataCategory.CLINICAL and data_type == GDC_DataType.CLINICAL_SUPPLEMENT:
         if data_format in ['BCR Biotab']:
             print('skipping {0} file {1}'.format(data_format, file_uuid))
             return
 
-    if 'experimental_strategy' in responseDict:
-        experimental_strategy = responseDict['experimental_strategy']
-    else: 
-        experimental_strategy = None
-    if 'analysis' in responseDict and 'workflow_type' in responseDict['analysis']:
-        workflow_type = responseDict['analysis']['workflow_type']
-    else:
-        workflow_type = None
-        
-    if data_category == GDC_DataCategory.CLINICAL or data_category == GDC_DataCategory.BIOSPECIMEN:
+    experimental_strategy = responseDict.get('experimental_strategy')
+    workflow_type = responseDict.get('analysis', {}).get('workflow_type')
+    read_groups = responseDict.get('analysis', {}).get('metadata', {}).get('read_groups')
+    avg_read_length = None
+    if read_groups is not None and len(read_groups) > 0:
+        # It's possible for read_length to be null according to the data dictionary, and though the field's presence is
+        # supposedly guaranteed, the below ensures filtering of both non-existence and null values
+        read_lengths = [read_group['read_length'] for read_group in read_groups if
+                        read_group.get('read_length') is not None]
+        if len(read_lengths) > 0:
+            avg_read_length = sum(read_lengths) / len(read_lengths)
+
+    if data_category in {GDC_DataCategory.CLINICAL, GDC_DataCategory.BIOSPECIMEN}:
         fileMetadataRetriever = FileCaseMetadataRetriever(gdc_api_root, token)
     else:
         fileMetadataRetriever = FileCaseSampleMetadataRetriever(gdc_api_root, token)
@@ -1124,28 +1237,30 @@ def process_deferred_file_uuid(drs_flag, file_uuid, filename, file_size, known_c
                 for sample in samples:
                     sample_id = sample['sample_id']
                     if sample_id in known_samples:
-                        _add_file_attribute(drs_flag, sample_id, known_samples[sample_id], file_uuid, filename, file_size,
-                                            data_category, data_type, data_format, experimental_strategy, 
-                                            workflow_type, is_ffpe, program, gdc_api_root, token)
+                        _add_file_attribute(drs_flag, sample_id, known_samples[sample_id], file_uuid, filename,
+                                            file_size, data_category, data_type, data_format, experimental_strategy,
+                                            workflow_type, is_ffpe, program, gdc_api_root, token, mean_coverage,
+                                            avg_read_length, release)
             else:
                 # associated with multiple cases only
                 _add_file_attribute(drs_flag, case_id, known_cases[case_id], file_uuid, filename, file_size,
-                                    data_category, data_type, data_format,experimental_strategy, 
-                                    workflow_type, is_ffpe, program, gdc_api_root, token)
+                                    data_category, data_type, data_format, experimental_strategy,
+                                    workflow_type, is_ffpe, program, gdc_api_root, token, mean_coverage,
+                                    avg_read_length, release)
 
 
 def create_participants_file(cases, manifestFileBasename):
-    
     attribute_names = []
     for case_id, case in cases.items():
         for attribute_name in case:
             if attribute_name not in attribute_names:
                 attribute_names.append(attribute_name)
-    
+
     participants_filename = manifestFileBasename + '_participants.tsv'
     participant_sets_membership_filename = manifestFileBasename + '_participant_sets_membership.tsv'
-    
-    with open(participants_filename, 'w') as participantsFile, open(participant_sets_membership_filename, 'w') as membershipFile:
+
+    with open(participants_filename, 'w') as participantsFile, open(participant_sets_membership_filename,
+                                                                    'w') as membershipFile:
         fieldnames = ['entity:participant_id'] + attribute_names
         participants_writer = csv.DictWriter(participantsFile, fieldnames=fieldnames, delimiter='\t')
         participants_writer.writeheader()
@@ -1153,57 +1268,61 @@ def create_participants_file(cases, manifestFileBasename):
         fieldnames = ['membership:participant_set_id', 'participant']
         membership_writer = csv.DictWriter(membershipFile, fieldnames=fieldnames, delimiter='\t')
         membership_writer.writeheader()
-        
+
         for case_id, case in cases.items():
             entity_row = {'entity:participant_id': case_id}
             for attribute_name in attribute_names:
-                if attribute_name in case:
+                if attribute_name in case and case[attribute_name] is not None:
                     entity_row[attribute_name] = case[attribute_name]
                 else:
                     entity_row[attribute_name] = '__DELETE__'
-                entity_row[attribute_name] = case[attribute_name] if attribute_name in case else '__DELETE__'
             participants_writer.writerow(entity_row)
 
-            membership_row = {'membership:participant_set_id' : 'ALL',
-                              'participant' : case_id}
-            membership_writer.writerow(membership_row)            
+            membership_row = {'membership:participant_set_id': 'ALL',
+                              'participant': case_id}
+            membership_writer.writerow(membership_row)
+
 
 def create_samples_file(samples, manifestFileBasename):
     attribute_names = []
     for sample_id, sample in samples.items():
         for attribute_name in sample:
-            if attribute_name not in {'submitter_id', 'case_id', 'sample_type_id', 'sample_type', 'tissue_type'} and attribute_name not in attribute_names:
+            if attribute_name not in {'submitter_id', 'case_id', 'sample_type_id', 'sample_type',
+                                      'tissue_type'} and attribute_name not in attribute_names:
                 attribute_names.append(attribute_name)
 
     samples_filename = manifestFileBasename + '_samples.tsv'
     sample_sets_membership_filename = manifestFileBasename + '_sample_sets_membership.tsv'
     with open(samples_filename, 'w') as samplesFile, open(sample_sets_membership_filename, 'w') as membershipFile:
-        
-        fieldnames = ['entity:sample_id', 'participant_id', 'submitter_id', 'sample_type_code', 'sample_type', 'tissue_type' ] + attribute_names
+
+        fieldnames = ['entity:sample_id', 'participant_id', 'submitter_id', 'sample_type_code', 'sample_type',
+                      'tissue_type'] + attribute_names
         sample_writer = csv.DictWriter(samplesFile, fieldnames=fieldnames, delimiter='\t')
         sample_writer.writeheader()
 
         fieldnames = ['membership:sample_set_id', 'sample']
         membership_writer = csv.DictWriter(membershipFile, fieldnames=fieldnames, delimiter='\t')
         membership_writer.writeheader()
-        
+
         for sample_id, sample in samples.items():
-            entity_row = {'entity:sample_id' : sample_id, 'participant_id': sample['case_id'],
-                          'submitter_id' : sample['submitter_id'],
-                          'sample_type_code' : SAMPLE_TYPE.getLetterCode(sample['sample_type_id']) if sample['sample_type_id'] is not None else '__DELETE__',
-                          'sample_type' : sample['sample_type'] if sample['sample_type'] is not None else '__DELETE__',
-                          'tissue_type' : sample['tissue_type'] if sample['tissue_type'] is not None else '__DELETE__'}
+            entity_row = {'entity:sample_id': sample_id, 'participant_id': sample['case_id'],
+                          'submitter_id': sample['submitter_id'],
+                          'sample_type_code': SAMPLE_TYPE.getLetterCode(sample['sample_type_id']) if sample[
+                                                                                                         'sample_type_id'] is not None else '__DELETE__',
+                          'sample_type': sample['sample_type'] if sample['sample_type'] is not None else '__DELETE__',
+                          'tissue_type': sample['tissue_type'] if sample['tissue_type'] is not None else '__DELETE__'}
             for attribute_name in attribute_names:
-                if attribute_name in sample:
+                if attribute_name in sample and sample[attribute_name] is not None:
                     entity_row[attribute_name] = sample[attribute_name]
                 else:
                     entity_row[attribute_name] = '__DELETE__'
             sample_writer.writerow(entity_row)
 
-            membership_row = {'membership:sample_set_id' : 'ALL',
+            membership_row = {'membership:sample_set_id': 'ALL',
                               'sample': sample_id}
             membership_writer.writerow(membership_row)
-                        
+
+
 def create_pairs_file(pairs, samples, manifestFileBasename):
     attribute_names = []
     for pair_id, pair in pairs.items():
@@ -1215,62 +1334,66 @@ def create_pairs_file(pairs, samples, manifestFileBasename):
     pair_sets_membership_filename = manifestFileBasename + '_pair_sets_membership.tsv'
     with open(pairs_filename, 'w') as pairsFile, open(pair_sets_membership_filename, 'w') as membershipFile:
         fieldnames = ['entity:pair_id', 'participant', 'case_sample', 'control_sample',
-                    'tumor_submitter_id', 'normal_submitter_id',
-                    'tumor_type', 'normal_type'] + attribute_names
+                      'tumor_submitter_id', 'normal_submitter_id',
+                      'tumor_type', 'normal_type'] + attribute_names
         pairs_writer = csv.DictWriter(pairsFile, fieldnames=fieldnames, delimiter='\t')
         pairs_writer.writeheader()
 
         fieldnames = ['membership:pair_set_id', 'pair']
         membership_writer = csv.DictWriter(membershipFile, fieldnames=fieldnames, delimiter='\t')
         membership_writer.writeheader()
-        
+
         for pair_id, pair in pairs.items():
 
             tumor_submitter_id = samples[pair['tumor']]['submitter_id']
             normal_submitter_id = samples[pair['normal']]['submitter_id']
-            entity_row = {'entity:pair_id' : pair_id,
-                          'participant' : samples[pair['tumor']]['case_id'],
-                          'case_sample' : pair['tumor'],
-                          'control_sample' : pair['normal'],
-                          'tumor_submitter_id' : tumor_submitter_id,
-                          'normal_submitter_id' : normal_submitter_id,
-                          'tumor_type' : SAMPLE_TYPE.getLetterCode(samples[pair['tumor']]['sample_type_id']),
-                          'normal_type' : SAMPLE_TYPE.getLetterCode(samples[pair['normal']]['sample_type_id'])}
+            entity_row = {'entity:pair_id': pair_id,
+                          'participant': samples[pair['tumor']]['case_id'],
+                          'case_sample': pair['tumor'],
+                          'control_sample': pair['normal'],
+                          'tumor_submitter_id': tumor_submitter_id,
+                          'normal_submitter_id': normal_submitter_id,
+                          'tumor_type': SAMPLE_TYPE.getLetterCode(samples[pair['tumor']]['sample_type_id']),
+                          'normal_type': SAMPLE_TYPE.getLetterCode(samples[pair['normal']]['sample_type_id'])}
             for attribute_name in attribute_names:
-                if attribute_name in pair:
+                if attribute_name in pair and pair[attribute_name] is not None:
                     entity_row[attribute_name] = pair[attribute_name]
                 else:
                     entity_row[attribute_name] = '__DELETE__'
             pairs_writer.writerow(entity_row)
 
-            row = {'membership:pair_set_id' : 'ALL',
+            row = {'membership:pair_set_id': 'ALL',
                    'pair': pair_id}
             membership_writer.writerow(row)
 
 
 def create_workspace_attributes_file(manifestFileBasename, is_legacy):
-    #This part is hardcoded due to the small number of attributes we need to specify.
-    #Please feel free to change this specification according to your needs.
-    legacy_flag="false"
+    # This part is hardcoded due to the small number of attributes we need to specify.
+    # Please feel free to change this specification according to your needs.
+    legacy_flag = "false"
     if is_legacy:
-        legacy_flag="true"
+        legacy_flag = "true"
 
-    #Due to a somewhat weird bug in FireCloud, please keep the workspace-colunm-defaults attribute as the last one in the list.
-    #Any new attributes should be added before workspace-column-defaults
+    # Due to a somewhat weird bug in FireCloud, please keep the workspace-colunm-defaults attribute as the last one in the list.
+    # Any new attributes should be added before workspace-column-defaults
     with open(manifestFileBasename + "_workspace_attributes.tsv", 'w') as workspaceColumnOrderFile:
         workspaceColumnOrderFile.write("workspace:legacy_flag\tworkspace-column-defaults\n")
-        workspaceColumnOrderFile.write(legacy_flag + "\t" + "{\"participant\": {\"shown\": [\"submitter_id\", \"project_id\", \"participant_id\"]}, \"sample\":{\"shown\":[\"submitter_id\", \"sample_id\", \"participant\", \"sample_type\"]}, \"pair\":{\"shown\":[\"tumor_submitter_id\", \"normal_submitter_id\", \"pair_id\"]}}")
+        workspaceColumnOrderFile.write(
+            legacy_flag + "\t" + "{\"participant\": {\"shown\": [\"submitter_id\", \"project_id\", \"participant_id\"]}, \"sample\":{\"shown\":[\"submitter_id\", \"sample_id\", \"participant\", \"sample_type\"]}, \"pair\":{\"shown\":[\"tumor_submitter_id\", \"normal_submitter_id\", \"pair_id\"]}}")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='create FireCloud workspace load files from GDC manifest')
     parser.add_argument("manifest", help="manifest file from the GDC Data Portal")
-    parser.add_argument("-c", "--all_cases", help="create participant entities for all referenced cases", action="store_true")
-    parser.add_argument("-a", "--api", choices=['main', 'legacy', 'awg'], default='main', help="Select API endpoint. awg requires a valid GDC download token.")
-    parser.add_argument("-t", "--token", type=argparse.FileType('r'), help="GDC download token to access controlled APIs")
+    parser.add_argument("-c", "--all_cases", help="create participant entities for all referenced cases",
+                        action="store_true")
+    parser.add_argument("-a", "--api", choices=['main', 'legacy', 'awg'], default='main',
+                        help="Select API endpoint. awg requires a valid GDC download token.")
+    parser.add_argument("-t", "--token", type=argparse.FileType('r'),
+                        help="GDC download token to access controlled APIs")
     parser.add_argument("-d", "--disable_drs", help="disable DRS URI", action="store_true")
     args = parser.parse_args(argv)
-    
+
     drs_flag = not args.disable_drs
 
     gdc_api_root = GDC_API_ROOT
@@ -1281,7 +1404,7 @@ def main(argv=None):
             sys.exit('AWG API requires a GDC download token\n' + parser.format_help())
         gdc_api_root = GDC_AWG_API_ROOT
         drs_flag = False
-    
+
     token = args.token.read() if args.token is not None else None
 
     print("manifestFile = {0}".format(args.manifest))
@@ -1302,10 +1425,10 @@ def main(argv=None):
         file_uuid = item['id']
         filename = item['filename']
         file_size = item['size']
-    
+
         UUID_TO_FILENAME[file_uuid] = filename
 
-        print('{0} of {1}: {2}, {3}'.format(i+1, len(manifestFileList),
+        print('{0} of {1}: {2}, {3}'.format(i + 1, len(manifestFileList),
                                             file_uuid, filename))
 
         for attempt in range(5):
@@ -1322,12 +1445,11 @@ def main(argv=None):
             except Exception as x:
                 print(''.join(traceback.format_exception(etype=type(x), value=x, tb=x.__traceback__)))
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
-                time.sleep((attempt+1)**2)
+                time.sleep((attempt + 1) ** 2)
         else:
-            #failed all attempts
+            # failed all attempts
             # - just move on
             print("failed 5 attempts! SKIPPING FILE: file uuid = ", file_uuid)
-
 
     print("Processing deferred files...")
     for file_uuid, filename, file_size in deferred_file_uuids:
@@ -1343,11 +1465,11 @@ def main(argv=None):
             except Exception as x:
                 print(''.join(traceback.format_exception(etype=type(x), value=x, tb=x.__traceback__)))
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
-                time.sleep((attempt+1)**2)
+                time.sleep((attempt + 1) ** 2)
             else:
                 break
         else:
-            #failed all attempts
+            # failed all attempts
             # - just move on
             print("failed 5 attempts! SKIPPING FILE: file uuid = ", file_uuid)
             continue
@@ -1359,12 +1481,12 @@ def main(argv=None):
     if len(pairs) != 0:
         create_pairs_file(pairs, samples, manifestFileBasename)
 
-    #This part creates a file that specifies the workspace attributes. 
-    #The attributes are:
+    # This part creates a file that specifies the workspace attributes.
+    # The attributes are:
     # 1.Default order of columns when shown in the workspace.
     # 2.Whether the workspace is meant to deal with data fom the legacy site or not.
     create_workspace_attributes_file(manifestFileBasename, False)
-    
+
 
 if __name__ == '__main__':
     main()
