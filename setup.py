@@ -24,7 +24,8 @@ setup(
     entry_points={
         'console_scripts': [
             'gdcLoadFiles=fcgdctools.fc_loadfiles:main',
-            'gdcWorkspace=fcgdctools.ws_builder:main'
+            'gdcWorkspace=fcgdctools.ws_builder:main',
+            'gdcAliquotManifest=fcgdctools.manifest_from_aliquots:main'
         ],
     },
     use_scm_version=True,

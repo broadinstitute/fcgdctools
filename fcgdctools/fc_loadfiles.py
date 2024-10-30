@@ -270,7 +270,7 @@ class FileMetadataRetriever(MetadataRetriever):
 class CaseMetadataRetriever(MetadataRetriever):
     def __init__(self, gdc_api_root, token=None):
         fields = "primary_site,disease_type"
-        expand = "demographic"
+        expand = "demographic,diagnoses"
         MetadataRetriever.__init__(self, 'cases', gdc_api_root, fields=fields, expand=expand, token=token)
 
 
@@ -319,6 +319,12 @@ def _add_to_knowncases(case_metadata, known_cases, gdc_api_root, token):
         primary_site = caseMetadata.get('primary_site')
         disease_type = caseMetadata.get('disease_type')
         demographics = caseMetadata.get('demographic', {})
+        diagnoses = caseMetadata.get('diagnoses', [])
+        diagnosis = {}
+        if len(diagnoses) == 1:
+            diagnosis = diagnoses[0]
+        elif len(diagnoses) > 1:  # pick the most recent diagnosis
+            diagnosis = max(diagnoses, key=lambda x: x['year_of_diagnosis'])
 
         new_case = {'submitter_id': submitter_id,
                     'project_id': project_id,
@@ -326,6 +332,9 @@ def _add_to_knowncases(case_metadata, known_cases, gdc_api_root, token):
                     'disease_type': disease_type}
         new_case.update((k, v) for k, v in demographics.items() if not (k.endswith('_id') or k.endswith('_datetime')
                                                                         or k == 'state' or v is None))
+        new_case.update((k, v) for k, v in diagnosis.items() if not (k.endswith('_id') or k.endswith('_datetime')
+                                                                     or k == 'state' or v is None
+                                                                     or str(v).lower() == 'not reported'))
         known_cases[case_id] = new_case
     return case_id
 
@@ -1443,7 +1452,7 @@ def main(argv=None):
                 print('Value Error, skip: {0}'.format(x))
                 break
             except Exception as x:
-                print(''.join(traceback.format_exception(etype=type(x), value=x, tb=x.__traceback__)))
+                print(''.join(traceback.format_exception(type(x), value=x, tb=x.__traceback__)))
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
                 time.sleep((attempt + 1) ** 2)
         else:
@@ -1463,7 +1472,7 @@ def main(argv=None):
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as x:
-                print(''.join(traceback.format_exception(etype=type(x), value=x, tb=x.__traceback__)))
+                print(''.join(traceback.format_exception(type(x), value=x, tb=x.__traceback__)))
                 print("attempt=", attempt, 'file uuid = ', file_uuid)
                 time.sleep((attempt + 1) ** 2)
             else:

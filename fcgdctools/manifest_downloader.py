@@ -62,3 +62,37 @@ def download_manifest(filt_json, api_root, token=None):
 
     return manifest_filename
 
+
+def download_manifest_post(filt_json, api_root, token=None):
+    # This is the API endpoint for performing a search on the GDC data portal and retrieving file information.
+    files_endpt = api_root + '/files'
+
+    # Creating a new name for the manifest file
+    timestamp = '{:%Y-%m-%d_%H-%M-%S}'.format(datetime.datetime.now())
+    manifest_filename = "gdc_manifest_" + timestamp + ".tsv"
+    print("downloading manifest {0}".format(manifest_filename))
+
+    data = {'filters': filt_json, 'from': 0, 'size': 30000,
+              'return_type': 'manifest'}
+
+    # requests URL-encodes automatically
+    headers = {}
+
+    if token:
+        headers['X-Auth-Token'] = token
+
+    # Writing the output to the manifest file
+    with open(manifest_filename, 'wb') as handle:
+        while True:
+            response = requests.post(files_endpt, json=data, headers=headers)
+            for ln_ct, line in enumerate(response.iter_lines()):
+                # Skip manifest header if not on first page
+                if ln_ct == 0 and data['from'] > 0:
+                    continue
+                handle.write(line + b'\n')
+            if ln_ct == data['size']:
+                data['from'] += data['size']
+            else:
+                break
+
+    return manifest_filename
