@@ -162,7 +162,7 @@ PLATFORM = DataSource(PLATFORM_ABBREVIATIONS)
 
 
 # Sample Types
-# from https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/sample-type-codes                                              
+# from https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/sample-type-codes
 class SampleType:
     TUMOR = 'tumor'
     NORMAL = 'normal'

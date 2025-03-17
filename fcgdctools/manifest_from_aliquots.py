@@ -1,11 +1,12 @@
 #! /usr/bin/env python3
 import argparse
 
-from manifest_downloader import build_filter_json, download_manifest_post
-from fc_loadfiles import GDC_API_ROOT
+from .manifest_downloader import build_filter_json, download_manifest_post
+from .fc_loadfiles import GDC_API_ROOT
 from pprint import pprint
 
-if __name__ == '__main__':
+def main():
+    """Generate a manifest from a list of aliquots"""
     parser = argparse.ArgumentParser(description="Generate a manifest from a list of aliquots")
     parser.add_argument('aliquots', help='File containing list of aliquots')
     parser.add_argument('-p', '--program', help='Program Name')
@@ -34,3 +35,6 @@ if __name__ == '__main__':
 
     filt_json = build_filter_json(filters)
     manifest_filename = download_manifest_post(filt_json, GDC_API_ROOT)
+
+if __name__ == '__main__':
+    main()
