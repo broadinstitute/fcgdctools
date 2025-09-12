@@ -70,6 +70,7 @@ class GDC_DataType:
     MASKED_COPY_NUMBER_SEGMENT = 'Masked Copy Number Segment'
     GENE_LEVEL_COPY_NUMBER = 'Gene Level Copy Number'
     ALLELE_SPECIFIC_COPY_NUMBER_SEGMENT = 'Allele-specific Copy Number Segment'
+    INTERMEDIATE_ANALYSIS_ARCHIVE = 'Intermediate Analysis Archive'
 
     # data types associated with Clinical data category
     CLINICAL_SUPPLEMENT = "Clinical Supplement"
@@ -135,8 +136,12 @@ WORKFLOW_ABBREVIATIONS = {
     'BWA-aln': 'BWAaln',
     'SomaticSniper': 'SomSnip',
     'SomaticSniper Annotation': 'SomSnipAnnot',
+    'CaVEMan': 'CaVEMan',
     'MuTect2': 'MuTect2',
     'MuTect2 Annotation': 'MuTect2Annot',
+    'GATK4 MuTect2': 'GATK4MuTect2',
+    'GATK4 MuTect2 Annotation': 'GATK4MuTect2Annot',
+    'Pindel': 'Pindel',
     'VarScan2': 'VarScan2',
     'VarScan2 Annotation': 'VarScan2Annot',
     'MuSE': 'MuSE',
@@ -148,7 +153,10 @@ WORKFLOW_ABBREVIATIONS = {
     'VarScan2 Variant Aggregation and Masking': 'VarScan2AggrMask',
     'FoundationOne Variant Aggregation and Masking': 'F1AggrMask',
     'ASCAT2': 'ASCAT2',
-    'AscatNGS': 'AscatNGS'}
+    'AscatNGS': 'AscatNGS',
+    'SvABA': 'SvABA',
+    'SvABA Indel': 'SvABAIndel',
+    'SvABA Indel Annotation': 'SvABAIndelAnnot'}
 
 WORKFLOW = DataSource(WORKFLOW_ABBREVIATIONS)
 
@@ -323,8 +331,8 @@ def _add_to_knowncases(case_metadata, known_cases, gdc_api_root, token):
         diagnosis = {}
         if len(diagnoses) == 1:
             diagnosis = diagnoses[0]
-        elif len(diagnoses) > 1:  # pick the most recent diagnosis
-            diagnosis = max(diagnoses, key=lambda x: x['year_of_diagnosis'])
+        elif len(diagnoses) > 1:  # pick the primary diagnosis
+            diagnosis = max(diagnoses, key=lambda x: x['diagnosis_is_primary_disease'])
 
         new_case = {'submitter_id': submitter_id,
                     'project_id': project_id,
@@ -685,12 +693,14 @@ def _resolve_collision(data_category, data_type, experimental_strategy, program,
     normal_aliquot_submitter_id1 = None
     normal_aliquot_submitter_id2 = None
 
-    # SNV and Combined Nucleotide Variation (TARGET only) files are associated with two samples: tumor and normal. 
+    # SNV, SV, and Combined Nucleotide Variation (TARGET only) files are associated with two samples: tumor and normal.
     if ((data_category in GDC_DataCategory.SNV and
          data_type not in {GDC_DataType.AGGREGATED_SOMATIC_MUTATION, GDC_DataType.MASKED_SOMATIC_MUTATION}) or
-            (data_category in GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION) or
-            (data_category in GDC_DataCategory.LEGACY_SNV and
-             data_type in GDC_DataType.LEGACY_SIMPLE_NUCLEOTIDE_VARIATION)):
+        (data_category in GDC_DataCategory.COMBINED_NUCLEOTIDE_VARIATION) or
+        (data_category in GDC_DataCategory.LEGACY_SNV and
+         data_type in GDC_DataType.LEGACY_SIMPLE_NUCLEOTIDE_VARIATION) or
+        (data_category in GDC_DataCategory.SV and
+         data_type in GDC_DataType.STRUCTURAL_REARRANGEMENT)):
 
         file_fields = "cases.samples.sample_type,cases.samples.portions.analytes.aliquots.submitter_id,cases.samples.sample_type_id"
         meta_retriever = MetadataRetriever('files', gdc_api_root, fields=file_fields, token=token)
@@ -923,6 +933,8 @@ def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
                 if data_format == 'BAM' and (experimental_strategy not in ('miRNA-Seq', 'RNA-Seq') or
                                              workflow_type == "STAR 2-Pass Genome"):
                     _add_bai_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token)
+                if data_format == 'VCF':
+                    _add_tbi_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token)
 
             else:
                 return
@@ -934,20 +946,27 @@ def _add_file_attribute(drs_flag, entity_id, entity, file_uuid, filename,
             if data_format == 'BAM' and (experimental_strategy not in ('miRNA-Seq', 'RNA-Seq') or
                                          workflow_type == "STAR 2-Pass Genome"):
                 _add_bai_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token)
+            if data_format == 'VCF':
+                _add_tbi_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token)
 
-
-def _add_bai_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token):
-    bai_basename = basename.replace('__bam__', '__bai__')
+def _add_index_attribute(data_type, index_type, drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token):
+    idx_basename = basename.replace(f'__{data_type}__', f'__{index_type}__')
     try:
         indexFileMetadataRetriever = IndexFileMetadataRetriever(file_uuid, gdc_api_root, token)
     except KeyError:
         print("WARNING: No index file found for {}, skipping.".format(filename))
         return
-    bai_uuid = indexFileMetadataRetriever.get_index_uuid()
-    bai_name = indexFileMetadataRetriever.get_index_name()
-    bai_size = indexFileMetadataRetriever.get_index_size()
-    _put_file_attribute(drs_flag, entity, bai_basename, bai_uuid, bai_name, bai_size, gdc_api_root)
+    idx_uuid = indexFileMetadataRetriever.get_index_uuid()
+    idx_name = indexFileMetadataRetriever.get_index_name()
+    idx_size = indexFileMetadataRetriever.get_index_size()
+    _put_file_attribute(drs_flag, entity, idx_basename, idx_uuid, idx_name, idx_size, gdc_api_root)
 
+def _add_bai_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token):
+    _add_index_attribute('bam', 'bai', drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token)
+
+
+def _add_tbi_attribute(drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token):
+    _add_index_attribute('vcf', 'tbi', drs_flag, entity, basename, file_uuid, filename, gdc_api_root, token)
 
 def fix_star_workflow(responseDict, filename):
     """

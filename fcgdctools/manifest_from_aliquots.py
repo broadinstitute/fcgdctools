@@ -15,6 +15,7 @@ def main():
                         help='Experimental Strategies')
     parser.add_argument('-d', '--data_format', default=['BAM'], nargs='*',
                         help='Data Formats')
+    parser.add_argument('-w', '--workflow_type', default=[], nargs='*', help='Workflow Types')
 
     args = parser.parse_args()
     pprint(args)
@@ -32,6 +33,8 @@ def main():
         filters["cases.project.project_id"] = [args.project]
     if args.experimental_strategy:
         filters["files.experimental_strategy"] = args.experimental_strategy
+    if args.workflow_type:
+        filters["analysis.workflow_type"] = args.workflow_type
 
     filt_json = build_filter_json(filters)
     manifest_filename = download_manifest_post(filt_json, GDC_API_ROOT)
